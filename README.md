@@ -8,7 +8,7 @@
 
 **Deterministic Model Context Protocol (MCP) Server for Civil Engineering, Roadworks, Paving, Earthworks, Foundations & Utilities Quantity Take-Off (`.dxf` / `.dwg` / `.pdf`) and Bill of Quantities (`.xlsx` / `.xlsm`) Auditing.**
 
-![Civil QTO Visual Audit Overlay Demo](docs/assets/qto_overlay_demo.svg)
+![civil-qto-mcp Engineering Blueprint & Audit Dashboard](docs/assets/hero_banner.svg)
 
 ---
 
