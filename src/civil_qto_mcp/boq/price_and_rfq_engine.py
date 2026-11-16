@@ -46,8 +46,10 @@ BUILTIN_BENCHMARKS: list[tuple[tuple[str, ...], str, float, float, float, bool, 
     (("földkiemelés", "gépi föld", "bevágás", "excavation"), "m3", 0.0, 1200.0, 3300.0, True, "Machine earth excavation"),
     (("visszatöltés", "backfill"), "m3", 0.0, 1000.0, 2200.0, False, "Layered earth backfill"),
     (("elszállítás", "elszallitas", "spoil"), "m3", 1500.0, 500.0, 3500.0, True, "Excess earth haulage and disposal"),
-    (("szerelőbeton", "szerelő beton", "blinding concrete"), "m3", 38000.0, 12000.0, 2500.0, True, "C12/15 - C16/20 blinding concrete"),
-    (("alaptest", "alaplemez", "szerkezeti vasbeton", "c25/30", "c30/37"), "m3", 44000.0, 14000.0, 5000.0, True, "C25/30 - C30/37 structural concrete"),
+    (("szerelőbeton", "szerelő beton", "szegélyalap", "c12/15", "c16/20", "blinding concrete"), "m3", 38000.0, 12000.0, 2500.0, True, "C12/15 - C16/20 blinding / curb bed concrete"),
+    (("alaptest", "alaplemez", "szerkezeti vasbeton", "c20/25", "c25/30", "c30/37"), "m3", 44000.0, 14000.0, 5000.0, True, "C25/30 - C30/37 structural concrete"),
+    (("taktilis", "figyelmeztető burkolat", "tactile paving"), "m2", 10000.0, 5000.0, 0.0, False, "Tactile warning paving elements"),
+    (("vízmérőhely", "vízmérőakna", "water meter chamber"), "pcs", 180000.0, 65000.0, 15000.0, True, "Precast concrete water meter chamber"),
     (("betonacél", "betonacel", "rebar", "b500b"), "t", 325000.0, 235000.0, 20000.0, False, "B500B reinforcement steel cut, bent & tied"),
     (("zsaluz", "formwork"), "m2", 7500.0, 8000.0, 0.0, False, "Formwork installation and stripping"),
     (("kg-pvc", "kgem", "sn8", "sewer pipe"), "m", 4200.0, 3800.0, 800.0, False, "KG-PVC SN8 gravity sewer pipe installation"),
@@ -149,10 +151,9 @@ def resolve_project_region(location: str) -> str:
 
 
 def _discover_database_dir(explicit_dir: str | Path | None = None) -> Path | None:
-    if explicit_dir:
+    if explicit_dir is not None:
         p = Path(explicit_dir).resolve()
-        if p.exists():
-            return p
+        return p if p.exists() else None
     env_dir = os.environ.get("CIVIL_QTO_PRICE_DB_DIR")
     if env_dir and Path(env_dir).exists():
         return Path(env_dir).resolve()

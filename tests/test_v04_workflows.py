@@ -162,6 +162,7 @@ def test_price_matcher_and_rfq_packager_regional_routing(tmp_path: Path) -> None
         project_location="Foktő",
         markup_factor=1.20,
         round_step=10.0,
+        database_dir=tmp_path,
     )
 
     assert rep.resolved_region == "Bács-Kiskun (Kecskemét térsége)"
