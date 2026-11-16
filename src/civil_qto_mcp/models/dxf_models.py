@@ -587,3 +587,103 @@ class VisualOverlayReport(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+# -----------------------------------------------------------------------------
+# v0.4 MODELS: Foundation, Plinth & Industrial Floor Slab QTO Calculator
+# -----------------------------------------------------------------------------
+
+
+class FoundationElementInput(BaseModel):
+    """Input definition of a structural foundation, plinth wall, or industrial floor element."""
+
+    element_id: str = Field(description="Identifier of the foundation/slab element (e.g., 'PA-1', 'SA-1', 'IP-1').")
+    element_type: Literal[
+        "PAD_FOOTING",
+        "CUP_FOOTING",
+        "STRIP_FOUNDATION",
+        "PLINTH_WALL",
+        "RAFT_SLAB",
+        "INDUSTRIAL_FLOOR",
+    ] = Field(description="Structural foundation or slab type.")
+    count: int = Field(default=1, ge=1, description="Number of identical elements.")
+    length_m: float = Field(default=0.0, ge=0.0, description="Length (or perimeter length for strip/plinth) in meters.")
+    width_m: float = Field(default=0.0, ge=0.0, description="Width (or thickness for plinth wall) in meters.")
+    height_m: float = Field(gt=0.0, description="Structural height / slab thickness in meters.")
+    plan_area_m2: float | None = Field(
+        default=None,
+        description="Optional explicit footprint area in m2 (if irregular polygon rather than length*width).",
+    )
+    plan_perimeter_m: float | None = Field(
+        default=None,
+        description="Optional explicit footprint perimeter in m (if irregular polygon).",
+    )
+    cup_void_volume_m3: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Socket/cup void volume (m3) deducted per element for CUP_FOOTING (kehelyalap).",
+    )
+    rebar_kg_per_m3: float | None = Field(
+        default=None,
+        description="Specific reinforcement ratio in kg/m3 (defaults by element_type: e.g., 95 for pad, 115 for raft, 30 for fiber floor).",
+    )
+    include_blinding: bool = Field(
+        default=True, description="Whether to compute lean/blinding concrete underneath (with overhang)."
+    )
+    include_excavation: bool = Field(
+        default=True, description="Whether to compute pit/trench excavation with working space and batter slope."
+    )
+    xps_insulation_sides: int = Field(
+        default=0,
+        ge=0,
+        le=2,
+        description="For PLINTH_WALL or RAFT_SLAB: number of vertical sides (0, 1, or 2) receiving XPS perimeter insulation.",
+    )
+    joint_grid_spacing_m: float = Field(
+        default=6.0,
+        gt=0.0,
+        description="For INDUSTRIAL_FLOOR: contraction joint saw-cutting grid spacing in meters (default 6.0m x 6.0m).",
+    )
+
+
+class FoundationElementBreakdown(BaseModel):
+    """Calculated structural, earthwork, formwork, rebar, and insulation quantities for an element group."""
+
+    element_id: str
+    element_type: str
+    count: int
+    footprint_area_m2: float
+    structural_concrete_m3: float
+    blinding_area_m2: float
+    blinding_concrete_m3: float
+    formwork_area_m2: float
+    rebar_or_fiber_tonnes: float
+    excavation_volume_m3: float
+    backfill_volume_m3: float
+    displaced_spoil_m3: float
+    xps_insulation_area_m2: float
+    saw_cut_joints_m: float
+    perimeter_isolation_strip_m: float
+
+
+class FoundationAndSlabQtoReport(BaseModel):
+    """Output schema for Tool 14: calculate_foundation_and_slab_qto."""
+
+    elements_processed_count: int
+    blinding_thickness_m: float
+    blinding_overhang_m: float
+    working_space_m: float
+    batter_angle_deg: float
+    total_structural_concrete_m3: float
+    total_blinding_concrete_m3: float
+    total_formwork_area_m2: float
+    total_rebar_and_fiber_tonnes: float
+    total_excavation_m3: float
+    total_backfill_m3: float
+    total_displaced_spoil_m3: float
+    total_xps_insulation_m2: float
+    total_saw_cut_joints_m: float
+    total_perimeter_strip_m: float
+    breakdowns: list[FoundationElementBreakdown] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+

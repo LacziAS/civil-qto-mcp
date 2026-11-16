@@ -227,7 +227,7 @@ def test_mcp_server_has_all_12_v03_tools() -> None:
         "export_qto_visual_overlay",
     }
     assert expected.issubset(set(tools_dict.keys()))
-    assert len(tools_dict) == 12
+    assert len(tools_dict) >= 12
 
 
 def test_international_i18n_profiles_and_decimal_currency(tmp_path: Path) -> None:

@@ -23,11 +23,20 @@ from pydantic import Field
 from civil_qto_mcp.boq.boq_writer import (
     apply_boq_modifications_and_pricing as _apply_boq_modifications_and_pricing,
 )
+from civil_qto_mcp.boq.completeness_auditor import (
+    audit_technological_completeness as _audit_technological_completeness,
+)
 from civil_qto_mcp.boq.cross_checker import compare_qto_with_boq as _compare_qto_with_boq
 from civil_qto_mcp.boq.excel_auditor import (
     inspect_and_audit_boq_xlsx as _inspect_and_audit_boq_xlsx,
 )
+from civil_qto_mcp.boq.price_and_rfq_engine import (
+    match_prices_and_generate_rfq as _match_prices_and_generate_rfq,
+)
 from civil_qto_mcp.cad.dwg_loader import convert_dwg_to_dxf as _convert_dwg_to_dxf
+from civil_qto_mcp.cad.foundation_calculator import (
+    calculate_foundation_and_slab_qto as _calculate_foundation_and_slab_qto,
+)
 from civil_qto_mcp.cad.inspector import inspect_civil_dxf as _inspect_civil_dxf
 from civil_qto_mcp.cad.manhole_optimizer import (
     optimize_precast_manhole_elements as _optimize_precast_manhole_elements,
@@ -56,10 +65,14 @@ from civil_qto_mcp.models.boq_models import (
     BoQRowPricingInput,
     BoQSupplementalItemInput,
     CompareQtoBoQReport,
+    PriceMatchAndRfqReport,
     QtoInputRecord,
+    TechnologicalCompletenessReport,
 )
 from civil_qto_mcp.models.dxf_models import (
     DwgConversionReport,
+    FoundationAndSlabQtoReport,
+    FoundationElementInput,
     InspectCivilDxfReport,
     LongitudinalProfileReport,
     ManholeOptimizationReport,
@@ -865,6 +878,173 @@ def export_qto_visual_overlay(
             point_layers=point_layers,
             output_dir=output_dir,
             locale=locale,
+        )
+
+
+# =============================================================================
+# v0.4 TOOLS: Technological Completeness Auditor, Foundation/Slab QTO & Price/RFQ Engine
+# =============================================================================
+
+
+@mcp.tool()
+def audit_technological_completeness(
+    boq_xlsx_path: Annotated[
+        str,
+        Field(description="Absolute path to the BoQ Excel workbook (.xlsx / .xlsm) to audit."),
+    ],
+    sheet_names: Annotated[
+        list[str] | None,
+        Field(description="Optional list of visible worksheet names to check."),
+    ] = None,
+    cad_curb_length_m: Annotated[
+        float | None,
+        Field(description="Optional CAD-measured curb length (m) to populate if curbs are missing from BoQ."),
+    ] = None,
+    cad_asphalt_tie_in_length_m: Annotated[
+        float | None,
+        Field(description="Optional CAD-measured asphalt tie-in length (m) for saw-cutting and joint sealing."),
+    ] = None,
+    cad_shallow_pipe_concrete_m3: Annotated[
+        float | None,
+        Field(description="Optional C12/15 concrete encasement volume (m3) for shallow pipes (<1.0m cover)."),
+    ] = None,
+    locale: Annotated[
+        Literal["en", "de", "hu"],
+        Field(description="Language for generated supplemental item descriptions ('en', 'de', or 'hu')."),
+    ] = "hu",
+) -> TechnologicalCompletenessReport:
+    """
+    [v0.4 Tool 13] Audit a BoQ workbook against 6 civil engineering technological completeness chains
+    (asphalt, block paving, gravity sewers, pressure water lines, RC foundations, industrial slabs)
+    and generate ready-to-insert `BoQSupplementalItemInput` (K-tétel) payloads for omitted items.
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        return _audit_technological_completeness(
+            boq_xlsx_path=boq_xlsx_path,
+            sheet_names=sheet_names,
+            cad_curb_length_m=cad_curb_length_m,
+            cad_asphalt_tie_in_length_m=cad_asphalt_tie_in_length_m,
+            cad_shallow_pipe_concrete_m3=cad_shallow_pipe_concrete_m3,
+            locale=locale,
+        )
+
+
+@mcp.tool()
+def calculate_foundation_and_slab_qto(
+    elements: Annotated[
+        list[FoundationElementInput] | None,
+        Field(
+            description=(
+                "List of structural foundation or slab elements ('PAD_FOOTING', 'CUP_FOOTING', "
+                "'STRIP_FOUNDATION', 'PLINTH_WALL', 'RAFT_SLAB', 'INDUSTRIAL_FLOOR')."
+            )
+        ),
+    ] = None,
+    file_path_cad: Annotated[
+        str | None,
+        Field(description="Optional DXF/DWG path to extract foundation footprint polygons directly."),
+    ] = None,
+    foundation_layers: Annotated[
+        list[str] | None,
+        Field(description="When `file_path_cad` is provided, CAD layers containing foundation footprints."),
+    ] = None,
+    default_cad_element_type: Annotated[
+        Literal[
+            "PAD_FOOTING",
+            "CUP_FOOTING",
+            "STRIP_FOUNDATION",
+            "PLINTH_WALL",
+            "RAFT_SLAB",
+            "INDUSTRIAL_FLOOR",
+        ],
+        Field(description="Element type assigned to CAD-extracted footprints."),
+    ] = "PAD_FOOTING",
+    default_cad_height_m: Annotated[
+        float,
+        Field(description="Structural height/thickness in meters for CAD-extracted footprints.", gt=0.0),
+    ] = 0.80,
+    unit_scale_to_meter: Annotated[
+        float,
+        Field(description="CAD drawing unit scale to meters (default 1.0).", gt=0.0),
+    ] = 1.0,
+    blinding_thickness_m: Annotated[
+        float,
+        Field(description="Blinding concrete thickness in meters (default 0.10m).", ge=0.0),
+    ] = 0.10,
+    blinding_overhang_m: Annotated[
+        float,
+        Field(description="Lateral overhang of blinding concrete on each side in meters (default 0.10m).", ge=0.0),
+    ] = 0.10,
+    working_space_m: Annotated[
+        float,
+        Field(description="Bottom pit working space around foundations in meters (default 0.50m per DIN 4124).", ge=0.0),
+    ] = 0.50,
+    batter_angle_deg: Annotated[
+        float,
+        Field(description="Pit excavation side slope angle in degrees (default 60.0 deg; 90.0 for vertical).", gt=0.0, le=90.0),
+    ] = 60.0,
+) -> FoundationAndSlabQtoReport:
+    """
+    [v0.4 Tool 14] Calculate the full structural and earthwork quantity chain for foundations, plinths,
+    and industrial floor slabs: structural concrete (m3), blinding concrete with lateral overhang (m3),
+    lateral formwork (m2), rebar/fiber tonnage (t), DIN 4124 prismoidal excavation (m3), plinth XPS (m2),
+    and saw-cut contraction joints (m).
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        return _calculate_foundation_and_slab_qto(
+            elements=elements,
+            file_path_cad=file_path_cad,
+            foundation_layers=foundation_layers,
+            default_cad_element_type=default_cad_element_type,
+            default_cad_height_m=default_cad_height_m,
+            unit_scale_to_meter=unit_scale_to_meter,
+            blinding_thickness_m=blinding_thickness_m,
+            blinding_overhang_m=blinding_overhang_m,
+            working_space_m=working_space_m,
+            batter_angle_deg=batter_angle_deg,
+        )
+
+
+@mcp.tool()
+def match_prices_and_generate_rfq(
+    boq_xlsx_path: Annotated[
+        str,
+        Field(description="Absolute path to the BoQ Excel workbook (.xlsx / .xlsm)."),
+    ],
+    project_location: Annotated[
+        str,
+        Field(description="Project city/settlement for regional price routing (e.g., 'Foktő', 'Kecskemét', 'Vecsés', 'Tótkomlós')."),
+    ] = "Kecskemét",
+    sheet_names: Annotated[
+        list[str] | None,
+        Field(description="Optional list of visible worksheet names to price."),
+    ] = None,
+    markup_factor: Annotated[
+        float,
+        Field(description="Global multiplier applied to matched unit prices (e.g., 1.0 for base, 1.20 for +20% markup).", gt=0.0),
+    ] = 1.0,
+    round_step: Annotated[
+        float,
+        Field(description="Rounding step for unit prices (0.01 default for EUR/USD; pass 10.0 for HUF).", ge=0.0),
+    ] = 0.01,
+    database_dir: Annotated[
+        str | None,
+        Field(description="Optional directory containing `sajat_egysegar_torzs.json` and `partner_es_alvallalkozo_torzs.json`."),
+    ] = None,
+) -> PriceMatchAndRfqReport:
+    """
+    [v0.4 Tool 15] Match BoQ items against regional unit-price databases (Tier 1 own regional DB,
+    Tier 2 supplier catalogs, Tier 3 built-in benchmarks), flag transport-sensitive items, produce
+    ready-to-apply `BoQRowPricingInput` payloads, and group materials into 6 supplier RFQ packages.
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        return _match_prices_and_generate_rfq(
+            boq_xlsx_path=boq_xlsx_path,
+            project_location=project_location,
+            sheet_names=sheet_names,
+            markup_factor=markup_factor,
+            round_step=round_step,
+            database_dir=database_dir,
         )
 
 

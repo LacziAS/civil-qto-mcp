@@ -237,3 +237,125 @@ class BoQModificationReport(BaseModel):
     post_write_formula_anomalies: int
     warnings: list[str] = Field(default_factory=list)
 
+
+# -----------------------------------------------------------------------------
+# v0.4 MODELS: Technological Completeness Auditor & Price/RFQ Engine
+# -----------------------------------------------------------------------------
+
+
+class MissingCompanionFinding(BaseModel):
+    """A missing technological companion item detected by Tool 13."""
+
+    rule_id: str
+    chain_category: Literal[
+        "ASPHALT_CHAIN",
+        "PAVING_BLOCK_CHAIN",
+        "GRAVITY_SEWER_CHAIN",
+        "PRESSURE_WATER_CHAIN",
+        "RC_FOUNDATION_CHAIN",
+        "INDUSTRIAL_SLAB_CHAIN",
+    ]
+    severity: Literal["CRITICAL_OMISSION", "RECOMMENDED_COMPANION", "RATIO_WARNING"]
+    trigger_sheet: str
+    trigger_description: str
+    missing_item_description: str
+    recommended_quantity: float
+    recommended_unit: str
+    engineering_justification: str
+    ready_supplemental_item: BoQSupplementalItemInput
+
+
+class TechnologicalCompletenessReport(BaseModel):
+    """Output schema for Tool 13: audit_technological_completeness."""
+
+    file_path: str
+    total_items_scanned: int
+    active_chains_detected: list[str] = Field(default_factory=list)
+    missing_companions_count: int
+    findings: list[MissingCompanionFinding] = Field(default_factory=list)
+    ready_supplemental_items: list[BoQSupplementalItemInput] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class MatchedBoQPriceRecord(BaseModel):
+    """Matched regional unit price for a single BoQ row produced by Tool 15."""
+
+    sheet_name: str
+    row_number: int
+    item_number: str
+    boq_description: str
+    quantity: float
+    unit: str
+    matched_database_item: str | None = None
+    match_source_tier: Literal[
+        "TIER1_OWN_REGIONAL_DB",
+        "TIER2_SUPPLIER_CATALOG",
+        "TIER3_BUILT_IN_BENCHMARK",
+        "UNMATCHED",
+    ]
+    region_used: str
+    is_transport_sensitive: bool = False
+    base_material_unit_price: float = 0.0
+    base_labor_unit_price: float = 0.0
+    base_equipment_unit_price: float = 0.0
+    final_combined_unit_price: float = 0.0
+    estimated_row_total: float = 0.0
+    confidence_score: float = 0.0
+    ready_row_pricing: BoQRowPricingInput
+
+
+class SupplierPartnerContact(BaseModel):
+    """Regional supplier or subcontractor contact from partner database."""
+
+    company_name: str
+    category: str = ""
+    region: str = ""
+    email: str = ""
+    phone: str = ""
+
+
+class RfqLineItem(BaseModel):
+    """Material or work item included inside a supplier RFQ package."""
+
+    sheet_name: str
+    row_number: int
+    description: str
+    quantity: float
+    unit: str
+
+
+class SupplierRfqPackage(BaseModel):
+    """Consolidated procurement RFQ package grouped by trade/material category."""
+
+    package_code: Literal[
+        "READYMIX_AND_CKT",
+        "AGGREGATES_AND_SAND",
+        "PAVING_AND_CURBS",
+        "ASPHALT_MIX",
+        "UTILITY_PIPES_AND_MANHOLES",
+        "REBAR_AND_STEEL",
+    ]
+    package_title: str
+    items_count: int
+    items: list[RfqLineItem] = Field(default_factory=list)
+    recommended_suppliers: list[SupplierPartnerContact] = Field(default_factory=list)
+
+
+class PriceMatchAndRfqReport(BaseModel):
+    """Output schema for Tool 15: match_prices_and_generate_rfq."""
+
+    boq_path: str
+    project_location: str
+    resolved_region: str
+    markup_factor_applied: float
+    total_rows_processed: int
+    matched_rows_count: int
+    unmatched_rows_count: int
+    transport_sensitive_rows_count: int
+    estimated_grand_total_net: float
+    matched_records: list[MatchedBoQPriceRecord] = Field(default_factory=list)
+    ready_row_pricings: list[BoQRowPricingInput] = Field(default_factory=list)
+    rfq_packages: list[SupplierRfqPackage] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
