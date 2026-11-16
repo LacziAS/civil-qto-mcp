@@ -359,3 +359,73 @@ class PriceMatchAndRfqReport(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+# -----------------------------------------------------------------------------
+# v0.5 MODELS: CAD & BoQ Revision / As-Built (Megvalósulási) Diff Comparator
+# -----------------------------------------------------------------------------
+
+
+class CadLayerDiffItem(BaseModel):
+    """Geometric difference between Old (R0 / Design) and New (R1 / As-Built) CAD layers."""
+
+    layer_name: str
+    feature_kind: Literal["AREA_POLYGON", "LINEAR", "POINT_COUNT"]
+    unit: Literal["m2", "m", "pcs"]
+    old_quantity: float
+    new_quantity: float
+    net_delta: float
+    delta_percent: float | None = None
+    spatially_added_area_m2: float | None = Field(
+        default=None, description="For AREA_POLYGON: area of newly added zones (New - Old) in m2."
+    )
+    spatially_removed_area_m2: float | None = Field(
+        default=None, description="For AREA_POLYGON: area of removed/omitted zones (Old - New) in m2."
+    )
+
+
+class BoQRevisionDiffItem(BaseModel):
+    """Row-level difference between two BoQ Excel workbooks (Old vs. New)."""
+
+    sheet_name: str
+    item_key: str
+    change_type: Literal[
+        "ADDED_ITEM",
+        "REMOVED_ITEM",
+        "QUANTITY_CHANGED",
+        "PRICE_CHANGED",
+        "QUANTITY_AND_PRICE_CHANGED",
+        "TEXT_MODIFIED",
+    ]
+    old_row_number: int | None = None
+    new_row_number: int | None = None
+    description: str
+    unit: str
+    old_quantity: float = 0.0
+    new_quantity: float = 0.0
+    quantity_delta: float = 0.0
+    old_unit_price: float = 0.0
+    new_unit_price: float = 0.0
+    old_total_price: float = 0.0
+    new_total_price: float = 0.0
+    total_price_delta: float = 0.0
+
+
+class RevisionComparisonReport(BaseModel):
+    """Output schema for Tool 17: compare_drawing_and_boq_revisions."""
+
+    old_cad_path: str | None = None
+    new_cad_path: str | None = None
+    old_boq_path: str | None = None
+    new_boq_path: str | None = None
+    cad_layer_diffs: list[CadLayerDiffItem] = Field(default_factory=list)
+    boq_item_diffs: list[BoQRevisionDiffItem] = Field(default_factory=list)
+    boq_added_count: int = 0
+    boq_removed_count: int = 0
+    boq_modified_count: int = 0
+    old_boq_grand_total: float = 0.0
+    new_boq_grand_total: float = 0.0
+    boq_net_total_delta: float = 0.0
+    ready_variation_items: list[BoQSupplementalItemInput] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+

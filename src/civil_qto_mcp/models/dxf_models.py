@@ -686,4 +686,53 @@ class FoundationAndSlabQtoReport(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+# -----------------------------------------------------------------------------
+# v0.5 MODELS: 3D TIN Surface Earthwork (Cut/Fill/Topsoil) Engine
+# -----------------------------------------------------------------------------
+
+
+class SpotElevationPoint(BaseModel):
+    """A 3D survey or design spot elevation point (X, Y, Z in meters)."""
+
+    x_m: float = Field(description="X / Easting coordinate in meters.")
+    y_m: float = Field(description="Y / Northing coordinate in meters.")
+    z_m: float = Field(description="Z elevation [mBf / m a.s.l.] in meters.")
+    point_id: str | None = Field(default=None, description="Optional point label or ID.")
+
+
+class TinEarthworkReport(BaseModel):
+    """Output schema for Tool 16: calculate_tin_earthwork_volumes."""
+
+    existing_points_count: int
+    design_points_count: int
+    tin_triangles_count: int
+    footprint_area_m2: float
+    topsoil_strip_thickness_m: float
+    topsoil_strip_volume_m3: float
+    pavement_structure_deduction_m: float
+    cut_area_m2: float
+    fill_area_m2: float
+    cut_volume_bank_m3: float = Field(
+        description="Net excavation (bevágás) volume below stripped ground to subgrade level in m3."
+    )
+    fill_volume_compacted_m3: float = Field(
+        description="Net embankment/fill (töltés) volume above stripped ground to subgrade level in m3."
+    )
+    compaction_factor: float = 1.15
+    fill_volume_required_bank_m3: float = Field(
+        description="Required borrow/bank fill volume including compaction factor (fill_compacted * compaction_factor)."
+    )
+    net_earth_balance_m3: float = Field(
+        description="fill_volume_required_bank_m3 - cut_volume_bank_m3 (negative = excess spoil to haul away; positive = borrow needed)."
+    )
+    min_existing_z_m: float
+    max_existing_z_m: float
+    avg_existing_z_m: float
+    min_subgrade_z_m: float
+    max_subgrade_z_m: float
+    avg_subgrade_z_m: float
+    warnings: list[str] = Field(default_factory=list)
+
+
+
 

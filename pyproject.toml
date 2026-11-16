@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "civil-qto-mcp"
-version = "0.4.0"
+version = "0.5.0"
 description = "Deterministic Model Context Protocol (MCP) server for Civil Engineering, Roadworks, Paving & Utilities Quantity Take-Off (DXF) and Bill of Quantities (XLSX/XLSM) Auditing."
 readme = "README.md"
 license = { text = "MIT" }

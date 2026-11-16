@@ -199,4 +199,4 @@ def test_mcp_server_has_all_15_v04_tools() -> None:
         "match_prices_and_generate_rfq",
     }
     assert expected.issubset(set(tools_dict.keys()))
-    assert len(tools_dict) == 15
+    assert len(tools_dict) >= 15

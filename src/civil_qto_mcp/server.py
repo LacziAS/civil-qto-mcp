@@ -53,6 +53,12 @@ from civil_qto_mcp.cad.profile_extractor import (
 from civil_qto_mcp.cad.qto_measurer import (
     measure_linear_and_area_features as _measure_linear_and_area_features,
 )
+from civil_qto_mcp.cad.revision_comparator import (
+    compare_drawing_and_boq_revisions as _compare_drawing_and_boq_revisions,
+)
+from civil_qto_mcp.cad.tin_earthwork_engine import (
+    calculate_tin_earthwork_volumes as _calculate_tin_earthwork_volumes,
+)
 from civil_qto_mcp.cad.utility_extractor import (
     extract_utility_network_and_levels as _extract_utility_network_and_levels,
 )
@@ -67,6 +73,7 @@ from civil_qto_mcp.models.boq_models import (
     CompareQtoBoQReport,
     PriceMatchAndRfqReport,
     QtoInputRecord,
+    RevisionComparisonReport,
     TechnologicalCompletenessReport,
 )
 from civil_qto_mcp.models.dxf_models import (
@@ -83,6 +90,8 @@ from civil_qto_mcp.models.dxf_models import (
     PdfConversionReport,
     ProfileCrossingInput,
     ProfileStationInput,
+    SpotElevationPoint,
+    TinEarthworkReport,
     UtilityNetworkReport,
     VisualOverlayReport,
 )
@@ -1045,6 +1054,148 @@ def match_prices_and_generate_rfq(
             markup_factor=markup_factor,
             round_step=round_step,
             database_dir=database_dir,
+        )
+
+
+# =============================================================================
+# v0.5 TOOLS: 3D Delaunay TIN Earthwork Engine & CAD/BoQ Revision Comparator
+# =============================================================================
+
+
+@mcp.tool()
+def calculate_tin_earthwork_volumes(
+    existing_points: Annotated[
+        list[SpotElevationPoint] | None,
+        Field(description="List of existing ground spot elevation points (X, Y, Z in meters)."),
+    ] = None,
+    design_points: Annotated[
+        list[SpotElevationPoint] | None,
+        Field(description="List of designed surface or subgrade spot elevation points (X, Y, Z in meters)."),
+    ] = None,
+    constant_design_elevation_m: Annotated[
+        float | None,
+        Field(description="Optional constant horizontal design elevation [mBf] if `design_points` is not provided."),
+    ] = None,
+    file_path_cad: Annotated[
+        str | None,
+        Field(description="Optional DXF/DWG path to extract spot elevation points and boundary polygons."),
+    ] = None,
+    existing_elevation_layers: Annotated[
+        list[str] | None,
+        Field(description="CAD layers containing existing ground elevation POINT/INSERT/TEXT entities."),
+    ] = None,
+    design_elevation_layers: Annotated[
+        list[str] | None,
+        Field(description="CAD layers containing designed surface elevation POINT/INSERT/TEXT entities."),
+    ] = None,
+    boundary_layers: Annotated[
+        list[str] | None,
+        Field(description="CAD layers defining the earthwork/grading boundary polygon."),
+    ] = None,
+    unit_scale_to_meter: Annotated[
+        float,
+        Field(description="CAD drawing unit scale to meters (default 1.0).", gt=0.0),
+    ] = 1.0,
+    topsoil_strip_thickness_m: Annotated[
+        float,
+        Field(description="Topsoil stripping thickness in meters (e.g., 0.10m or 0.20m).", ge=0.0),
+    ] = 0.15,
+    pavement_structure_thickness_m: Annotated[
+        float,
+        Field(
+            description=(
+                "Total pavement structure thickness (m) deducted from finished design surface "
+                "to reach the subgrade mirror level (tükörszint). Pass 0.0 if design_points are already subgrade levels."
+            ),
+            ge=0.0,
+        ),
+    ] = 0.0,
+    fill_compaction_factor: Annotated[
+        float,
+        Field(description="Compaction multiplier for required borrow fill (default 1.15).", gt=0.0),
+    ] = 1.15,
+) -> TinEarthworkReport:
+    """
+    [v0.5 Tool 16] Compute 3D Delaunay TIN surface earthwork volumes (topsoil stripping, cut, fill,
+    and net earth balance) between existing terrain and designed subgrade level directly from
+    CAD spot-elevation layers or 3D point clouds (without Civil 3D).
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        return _calculate_tin_earthwork_volumes(
+            existing_points=existing_points,
+            design_points=design_points,
+            constant_design_elevation_m=constant_design_elevation_m,
+            file_path_cad=file_path_cad,
+            existing_elevation_layers=existing_elevation_layers,
+            design_elevation_layers=design_elevation_layers,
+            boundary_layers=boundary_layers,
+            unit_scale_to_meter=unit_scale_to_meter,
+            topsoil_strip_thickness_m=topsoil_strip_thickness_m,
+            pavement_structure_thickness_m=pavement_structure_thickness_m,
+            fill_compaction_factor=fill_compaction_factor,
+        )
+
+
+@mcp.tool()
+def compare_drawing_and_boq_revisions(
+    old_cad_path: Annotated[
+        str | None,
+        Field(description="Optional path to the Old / Design (R0) DXF or DWG drawing."),
+    ] = None,
+    new_cad_path: Annotated[
+        str | None,
+        Field(description="Optional path to the New / Revised (R1) or As-Built (Megvalósulási) DXF or DWG drawing."),
+    ] = None,
+    boundary_layers: Annotated[
+        list[str] | None,
+        Field(description="Polygon area layers to compare between Old and New CAD drawings."),
+    ] = None,
+    linear_layers: Annotated[
+        list[str] | None,
+        Field(description="Linear layers to compare between Old and New CAD drawings."),
+    ] = None,
+    point_layers: Annotated[
+        list[str] | None,
+        Field(description="Point/circle/insert layers to compare between Old and New CAD drawings."),
+    ] = None,
+    unit_scale_to_meter: Annotated[
+        float,
+        Field(description="CAD drawing unit scale to meters (default 1.0).", gt=0.0),
+    ] = 1.0,
+    old_boq_xlsx_path: Annotated[
+        str | None,
+        Field(description="Optional path to the Old / Baseline BoQ Excel workbook (.xlsx)."),
+    ] = None,
+    new_boq_xlsx_path: Annotated[
+        str | None,
+        Field(description="Optional path to the New / Revised BoQ Excel workbook (.xlsx)."),
+    ] = None,
+    sheet_names: Annotated[
+        list[str] | None,
+        Field(description="Optional list of visible BoQ worksheet names to compare."),
+    ] = None,
+    locale: Annotated[
+        Literal["en", "de", "hu"],
+        Field(description="Language for generated variation order notes ('en', 'de', or 'hu')."),
+    ] = "hu",
+) -> RevisionComparisonReport:
+    """
+    [v0.5 Tool 17] Compare Old vs. New (or Design vs. As-Built) CAD drawings and/or BoQ Excel workbooks,
+    calculating spatial area additions/removals (`New - Old` and `Old - New`), linear/point deltas,
+    row-level BoQ diffs, and ready-to-apply variation order (`kiv. észrevétel` / `K-tétel`) payloads.
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        return _compare_drawing_and_boq_revisions(
+            old_cad_path=old_cad_path,
+            new_cad_path=new_cad_path,
+            boundary_layers=boundary_layers,
+            linear_layers=linear_layers,
+            point_layers=point_layers,
+            unit_scale_to_meter=unit_scale_to_meter,
+            old_boq_xlsx_path=old_boq_xlsx_path,
+            new_boq_xlsx_path=new_boq_xlsx_path,
+            sheet_names=sheet_names,
+            locale=locale,
         )
 
 
