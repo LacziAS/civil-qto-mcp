@@ -174,4 +174,4 @@ def test_mcp_server_has_all_17_v05_tools() -> None:
         "compare_drawing_and_boq_revisions",
     }
     assert expected.issubset(set(tools_dict.keys()))
-    assert len(tools_dict) == 17
+    assert len(tools_dict) >= 17

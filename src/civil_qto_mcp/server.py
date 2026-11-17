@@ -33,6 +33,15 @@ from civil_qto_mcp.boq.excel_auditor import (
 from civil_qto_mcp.boq.price_and_rfq_engine import (
     match_prices_and_generate_rfq as _match_prices_and_generate_rfq,
 )
+from civil_qto_mcp.boq.progress_billing_generator import (
+    generate_progress_certificate as _generate_progress_certificate,
+)
+from civil_qto_mcp.boq.supplier_bid_tabulator import (
+    compare_supplier_quotes_and_build_bid_tab as _compare_supplier_quotes_and_build_bid_tab,
+)
+from civil_qto_mcp.cad.cross_section_calculator import (
+    calculate_cross_section_and_embankment_qto as _calculate_cross_section_and_embankment_qto,
+)
 from civil_qto_mcp.cad.dwg_loader import convert_dwg_to_dxf as _convert_dwg_to_dxf
 from civil_qto_mcp.cad.foundation_calculator import (
     calculate_foundation_and_slab_qto as _calculate_foundation_and_slab_qto,
@@ -59,6 +68,9 @@ from civil_qto_mcp.cad.revision_comparator import (
 from civil_qto_mcp.cad.tin_earthwork_engine import (
     calculate_tin_earthwork_volumes as _calculate_tin_earthwork_volumes,
 )
+from civil_qto_mcp.cad.trench_earthwork_calculator import (
+    calculate_trench_earthwork_and_bedding as _calculate_trench_earthwork_and_bedding,
+)
 from civil_qto_mcp.cad.utility_extractor import (
     extract_utility_network_and_levels as _extract_utility_network_and_levels,
 )
@@ -66,17 +78,23 @@ from civil_qto_mcp.cad.visual_overlay import (
     export_qto_visual_overlay as _export_qto_visual_overlay,
 )
 from civil_qto_mcp.models.boq_models import (
+    BidTabTargetItemInput,
     BoQAuditReport,
     BoQModificationReport,
     BoQRowPricingInput,
     BoQSupplementalItemInput,
     CompareQtoBoQReport,
     PriceMatchAndRfqReport,
+    ProgressCertificateReport,
+    ProgressItemEntryInput,
     QtoInputRecord,
     RevisionComparisonReport,
+    SupplierBidTabulationReport,
+    SupplierQuoteInput,
     TechnologicalCompletenessReport,
 )
 from civil_qto_mcp.models.dxf_models import (
+    CrossSectionAndEmbankmentReport,
     DwgConversionReport,
     FoundationAndSlabQtoReport,
     FoundationElementInput,
@@ -90,8 +108,12 @@ from civil_qto_mcp.models.dxf_models import (
     PdfConversionReport,
     ProfileCrossingInput,
     ProfileStationInput,
+    RoadCrossSectionSegmentInput,
     SpotElevationPoint,
     TinEarthworkReport,
+    TrenchEarthworkAndBeddingReport,
+    TrenchManholePitInput,
+    TrenchPipeSegmentInput,
     UtilityNetworkReport,
     VisualOverlayReport,
 )
@@ -1196,6 +1218,325 @@ def compare_drawing_and_boq_revisions(
             new_boq_xlsx_path=new_boq_xlsx_path,
             sheet_names=sheet_names,
             locale=locale,
+        )
+
+
+# =============================================================================
+# v0.6 TOOLS: Detailed Utility Trench Earthwork, Bedding, Backfill & Shoring
+# =============================================================================
+
+
+@mcp.tool()
+def calculate_trench_earthwork_and_bedding(
+    pipe_segments: Annotated[
+        list[TrenchPipeSegmentInput] | None,
+        Field(
+            description=(
+                "List of utility pipe segments with nominal diameter (DN), material, length, "
+                "start/end depth to invert, trench wall mode ('VERTICAL_SHORED' or 'SLOPED_UNSHORED'), "
+                "lower bedding thickness, and protective cover zone."
+            )
+        ),
+    ] = None,
+    manhole_pits: Annotated[
+        list[TrenchManholePitInput] | None,
+        Field(
+            description=(
+                "Optional list of manhole or road gully pits along the trench to compute pit excavation, "
+                "under-base bedding, structure volume displacement, and pit shoring."
+            )
+        ),
+    ] = None,
+    dxf_path: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional DXF/DWG path: if `pipe_segments` is omitted, automatically extracts utility "
+                "pipe spans and manholes from the CAD drawing."
+            )
+        ),
+    ] = None,
+    unit_scale_to_meter: Annotated[
+        float,
+        Field(description="CAD drawing unit scale to meters when `dxf_path` is used (default 1.0).", gt=0.0),
+    ] = 1.0,
+    standard_profile: Annotated[
+        Literal["EN_1610_DIN_4124", "HU_MSZ_EN_1610_TERC"],
+        Field(description="Trench geometry and depth-banding standard ('EN_1610_DIN_4124' or 'HU_MSZ_EN_1610_TERC')."),
+    ] = "HU_MSZ_EN_1610_TERC",
+    shoring_depth_threshold_m: Annotated[
+        float,
+        Field(description="Trench depth threshold in meters above which two-sided shoring is calculated (default 1.25m).", ge=0.0),
+    ] = 1.25,
+    hand_excavation_ratio: Annotated[
+        float,
+        Field(description="Base fraction of trench excavation performed by hand (e.g., 0.15 for 85%/15% machine/hand split).", ge=0.0, le=1.0),
+    ] = 0.15,
+    crossing_hand_zone_length_m: Annotated[
+        float,
+        Field(description="Total length of 100% hand-excavated protection zone per utility crossing in meters (default 2.0m).", ge=0.0),
+    ] = 2.0,
+    bedding_compaction_factor: Annotated[
+        float,
+        Field(description="Compaction and trench-wall loss factor for ordering sand/gravel bedding (default 1.15).", gt=0.0),
+    ] = 1.15,
+    bedding_bulk_density_t_per_m3: Annotated[
+        float,
+        Field(description="Bulk density (t/m3) of sand/gravel bedding for quarry tonnage conversion (default 1.75 t/m3).", gt=0.0),
+    ] = 1.75,
+    default_pavement_box_deduction_m: Annotated[
+        float,
+        Field(
+            description="Default pavement structure box thickness (m) deducted from top of trench when auto-extracting from DXF.",
+            ge=0.0,
+        ),
+    ] = 0.0,
+) -> TrenchEarthworkAndBeddingReport:
+    """
+    [v0.6 Tool 18] Calculate complete MSZ EN 1610 / DIN 4124 utility trench and manhole-pit earthworks:
+    depth-banded excavation (`0-1.5m`, `1.5-3.0m`, `>3.0m`), machine vs. hand excavation split,
+    lower bedding (`m3`), pipe-zone protective cover (`m3`), exact pipe & manhole volume displacement (`m3`),
+    native soil backfill (`m3`), excess displaced spoil haul-off (`m3`), two-sided trench shoring (`m2`),
+    warning tape (`m`), and geotextile trench wrapping (`m2`).
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        return _calculate_trench_earthwork_and_bedding(
+            pipe_segments=pipe_segments,
+            manhole_pits=manhole_pits,
+            dxf_path=dxf_path,
+            unit_scale_to_meter=unit_scale_to_meter,
+            standard_profile=standard_profile,
+            shoring_depth_threshold_m=shoring_depth_threshold_m,
+            hand_excavation_ratio=hand_excavation_ratio,
+            crossing_hand_zone_length_m=crossing_hand_zone_length_m,
+            bedding_compaction_factor=bedding_compaction_factor,
+            bedding_bulk_density_t_per_m3=bedding_bulk_density_t_per_m3,
+            default_pavement_box_deduction_m=default_pavement_box_deduction_m,
+        )
+
+
+@mcp.tool()
+def compare_supplier_quotes_and_build_bid_tab(
+    target_items: Annotated[
+        list[BidTabTargetItemInput],
+        Field(
+            description=(
+                "List of required procurement items (`item_id`, `description`, `unit`, `required_quantity`, "
+                "and optional `unit_weight_kg`, `units_per_pallet`, `boq_sheet_name`, `boq_row_number`)."
+            )
+        ),
+    ],
+    supplier_quotes: Annotated[
+        list[SupplierQuoteInput],
+        Field(
+            description=(
+                "List of supplier quote submissions (`supplier_name`, `lines` or `quote_file_path`, "
+                "`global_discount_percent`, `freight_mode`, `freight_rate`, `unloading_fee_per_pallet`, "
+                "`non_refundable_pallet_fee_per_pallet`, `payment_terms`, `notes_and_conditions`)."
+            )
+        ),
+    ],
+    package_name: Annotated[
+        str,
+        Field(description="Procurement package name displayed on the Bid Tabulation header."),
+    ] = "Térburkolat és Szegély Beszerzési Csomag",
+    currency: Annotated[
+        str,
+        Field(description="Currency code (e.g., 'HUF', 'EUR', 'USD')."),
+    ] = "HUF",
+    output_xlsx_path: Annotated[
+        str | None,
+        Field(description="Optional path where the formatted Excel Bid Tabulation (`Ártükör.xlsx`) will be saved."),
+    ] = None,
+    contractor_markup_factor: Annotated[
+        float,
+        Field(description="Multiplier applied to winning landed unit prices when generating `recommended_boq_pricings` (default 1.0).", gt=0.0),
+    ] = 1.0,
+    round_step: Annotated[
+        float,
+        Field(description="Rounding step for `recommended_boq_pricings` (default 10.0 for HUF; 0.01 for EUR).", ge=0.0),
+    ] = 10.0,
+    award_strategy: Annotated[
+        Literal["BEST_SINGLE_SUPPLIER", "CHERRY_PICK_LOWEST"],
+        Field(
+            description=(
+                "Whether `recommended_boq_pricings` should use prices from `BEST_SINGLE_SUPPLIER` "
+                "(one package order) or `CHERRY_PICK_LOWEST` (lowest landed supplier per item)."
+            )
+        ),
+    ] = "BEST_SINGLE_SUPPLIER",
+) -> SupplierBidTabulationReport:
+    """
+    [v0.6 Tool 19] Compare multiple supplier quotes (.xlsx, .pdf, or structured lines) on an
+    apples-to-apples True Landed Cost basis (distributing truckload freight, crane unloading,
+    and pallet/packaging fees into per-unit landed prices), scan for commercial fine-print traps,
+    generate a color-coded Excel Bid Tabulation (`Ártükör.xlsx`), and output ready-to-apply
+    `BoQRowPricingInput` payloads.
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        return _compare_supplier_quotes_and_build_bid_tab(
+            target_items=target_items,
+            supplier_quotes=supplier_quotes,
+            package_name=package_name,
+            currency=currency,
+            output_xlsx_path=output_xlsx_path,
+            contractor_markup_factor=contractor_markup_factor,
+            round_step=round_step,
+            award_strategy=award_strategy,
+        )
+
+
+@mcp.tool()
+def calculate_cross_section_and_embankment_qto(
+    segments: Annotated[
+        list[RoadCrossSectionSegmentInput] | None,
+        Field(
+            description=(
+                "List of road typical cross-section segments (`segment_id`, `length_m`, "
+                "`shoulder_width_left_m`, `shoulder_width_right_m`, `shoulder_thickness_cm`, "
+                "`embankment_height_left_m`, `embankment_height_right_m`, `slope_ratio_h_to_v`, "
+                "`slope_topsoil_thickness_m`, `ditch_sides`, `ditch_bottom_width_m`, `ditch_depth_m`, "
+                "`ditch_lining_type`, `infiltration_gravel_depth_m`)."
+            )
+        ),
+    ] = None,
+    dxf_path: Annotated[
+        str | None,
+        Field(description="Optional DXF/DWG path to auto-measure road alignment length from `alignment_layers`."),
+    ] = None,
+    alignment_layers: Annotated[
+        list[str] | None,
+        Field(description="CAD layers containing road centerline or edge lines when `dxf_path` is used."),
+    ] = None,
+    unit_scale_to_meter: Annotated[
+        float,
+        Field(description="CAD drawing unit scale to meters (default 1.0).", gt=0.0),
+    ] = 1.0,
+    shoulder_compaction_factor: Annotated[
+        float,
+        Field(description="Compaction multiplier for ordering granular shoulder material (default 1.15).", gt=0.0),
+    ] = 1.15,
+    shoulder_bulk_density_t_per_m3: Annotated[
+        float,
+        Field(description="Bulk density (t/m3) of crushed stone shoulder material (default 2.05 t/m3).", gt=0.0),
+    ] = 2.05,
+) -> CrossSectionAndEmbankmentReport:
+    """
+    [v0.6 Tool 20] Calculate road typical cross-section (mintakeresztszelvény) quantities:
+    crushed-stone road shoulders (`m2`, compacted `m3`, order `m3`, and tonnes `t` including outer
+    batter-slope wedge), inclined embankment/cut slope surface area (`m2`), slope topsoil spreading (`m3`),
+    hydroseeding area (`m2`), and trapezoidal roadside drainage/infiltration ditch excavation (`m3`),
+    lining/grassing (`m2`), washed gravel fill (`m3`), and geotextile wrap (`m2`).
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        return _calculate_cross_section_and_embankment_qto(
+            segments=segments,
+            dxf_path=dxf_path,
+            alignment_layers=alignment_layers,
+            unit_scale_to_meter=unit_scale_to_meter,
+            shoulder_compaction_factor=shoulder_compaction_factor,
+            shoulder_bulk_density_t_per_m3=shoulder_bulk_density_t_per_m3,
+        )
+
+
+@mcp.tool()
+def generate_progress_certificate(
+    progress_entries: Annotated[
+        list[ProgressItemEntryInput] | None,
+        Field(
+            description=(
+                "List of item progress records (`item_key`, `previous_cumulative_quantity`, "
+                "`current_period_quantity` or `target_cumulative_percent`, `measurement_proof_formula`)."
+            )
+        ),
+    ] = None,
+    contract_boq_xlsx_path: Annotated[
+        str | None,
+        Field(description="Optional path to the contracted BoQ Excel workbook (.xlsx) to read contracted items and prices."),
+    ] = None,
+    sheet_names: Annotated[
+        list[str] | None,
+        Field(description="Optional list of visible BoQ worksheet names to include when `contract_boq_xlsx_path` is provided."),
+    ] = None,
+    default_completion_percent: Annotated[
+        float | None,
+        Field(
+            description=(
+                "Optional default cumulative completion percentage (0 to 100) applied to contracted items "
+                "not explicitly listed in `progress_entries`."
+            ),
+            ge=0.0,
+        ),
+    ] = None,
+    project_name: Annotated[
+        str,
+        Field(description="Project title displayed on the Payment Certificate and Measurement Sheet."),
+    ] = "Mélyépítési és Útépítési Projekt",
+    certificate_number: Annotated[
+        str,
+        Field(description="Certificate number/title (e.g., '1. Részszámla', '2. sz. Teljesítésigazolás', 'Végszámla')."),
+    ] = "1. Részszámla (1. sz. Teljesítésigazolás)",
+    billing_period: Annotated[
+        str,
+        Field(description="Billing period string (e.g., '2026. november')."),
+    ] = "2026. november",
+    client_name: Annotated[
+        str,
+        Field(description="Employer / Client company name."),
+    ] = "Megrendelő Kft.",
+    contractor_name: Annotated[
+        str,
+        Field(description="Contractor company name."),
+    ] = "Térburkolat Kft.",
+    currency: Annotated[
+        str,
+        Field(description="Currency code (e.g., 'HUF', 'EUR', 'USD')."),
+    ] = "HUF",
+    advance_deduction_percent: Annotated[
+        float,
+        Field(description="Proportional advance payment repayment percentage deducted from current period work (default 0.0%).", ge=0.0, le=100.0),
+    ] = 0.0,
+    retention_percent: Annotated[
+        float,
+        Field(description="Performance guarantee retention percentage deducted from current period work (default 5.0%).", ge=0.0, le=50.0),
+    ] = 5.0,
+    vat_percent: Annotated[
+        float,
+        Field(description="VAT percentage (default 27.0%; pass 0.0 for domestic reverse-charge / fordított adózás).", ge=0.0),
+    ] = 27.0,
+    output_xlsx_path: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional path where the formatted 2-sheet Excel workbook "
+                "(`1_Teljesítésigazolás` and `2_Felmérési_Napló`) will be saved."
+            )
+        ),
+    ] = None,
+) -> ProgressCertificateReport:
+    """
+    [v0.6 Tool 21] Generate a Construction Measurement Sheet (Felmérési Napló) and Monthly Progress
+    Payment Certificate (Teljesítésigazolás / FIDIC IPC) from a contracted BoQ workbook and/or
+    progress entries: computes previous, current, and cumulative quantities/amounts, flags >100%
+    overruns (Pótmunka), applies advance repayment and retention deductions, and exports a 2-sheet
+    Excel workbook with live formulas and FMV/ME signature blocks.
+    """
+    with contextlib.redirect_stdout(sys.stderr):
+        return _generate_progress_certificate(
+            progress_entries=progress_entries,
+            contract_boq_xlsx_path=contract_boq_xlsx_path,
+            sheet_names=sheet_names,
+            default_completion_percent=default_completion_percent,
+            project_name=project_name,
+            certificate_number=certificate_number,
+            billing_period=billing_period,
+            client_name=client_name,
+            contractor_name=contractor_name,
+            currency=currency,
+            advance_deduction_percent=advance_deduction_percent,
+            retention_percent=retention_percent,
+            vat_percent=vat_percent,
+            output_xlsx_path=output_xlsx_path,
         )
 
 

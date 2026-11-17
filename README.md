@@ -3,8 +3,8 @@
 [![CI](https://github.com/LacziAS/civil-qto-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LacziAS/civil-qto-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![MCP](https://img.shields.io/badge/MCP-17%20Tools-10b981.svg)](https://modelcontextprotocol.io/)
-[![Tests](https://img.shields.io/badge/pytest-35%20passed-brightgreen.svg)](tests/)
+[![MCP](https://img.shields.io/badge/MCP-21%20Tools-10b981.svg)](https://modelcontextprotocol.io/)
+[![Tests](https://img.shields.io/badge/pytest-41%20passed-brightgreen.svg)](tests/)
 
 **Deterministic Model Context Protocol (MCP) Server for Civil Engineering, Roadworks, Paving, Earthworks, Foundations & Utilities Quantity Take-Off (`.dxf` / `.dwg` / `.pdf`) and Bill of Quantities (`.xlsx` / `.xlsm`) Auditing.**
 
@@ -31,22 +31,27 @@ flowchart TD
         T1 --> T14["calculate_foundation_and_slab_qto"]
         T1 --> T16["calculate_tin_earthwork_volumes"]
         T2 --> T8["calculate_pavement_layer_quantities"]
+        T2 --> T20["calculate_cross_section_and_embankment_qto"]
         T3 --> T7["optimize_precast_manhole_elements"]
+        T3 --> T18["calculate_trench_earthwork_and_bedding"]
         T2 --> T12["export_qto_visual_overlay"]
     end
     subgraph Step3["3. BoQ Auditing, Completeness, Pricing & Revisions"]
         T4["inspect_and_audit_boq_xlsx"] --> T5["compare_qto_with_boq"]
         T4 --> T13["audit_technological_completeness"]
         T4 --> T15["match_prices_and_generate_rfq"]
+        T15 --> T19["compare_supplier_quotes_and_build_bid_tab"]
         T13 --> T11["apply_boq_modifications_and_pricing"]
         T15 --> T11
+        T19 --> T11
         T17["compare_drawing_and_boq_revisions"] --> T11
+        T11 --> T21["generate_progress_certificate"]
     end
 ```
 
 ---
 
-## Complete Tool Reference (v0.5.0 – 17 Deterministic Tools)
+## Complete Tool Reference (v0.6.0 – 21 Deterministic Tools)
 
 | # | Tool Name | Category | Purpose & Engineering Guarantees |
 | :-: | :--- | :---: | :--- |
@@ -67,6 +72,10 @@ flowchart TD
 | 15 | **`match_prices_and_generate_rfq`** | Pricing & RFQ | Matches BoQ line items against 3-tier regional unit-price databases (own historical DB, supplier price lists, and built-in benchmarks), flags transport-sensitive items, generates ready-to-apply `BoQRowPricingInput` payloads, and groups materials into 6 procurement RFQ packages with regional supplier contacts. |
 | 16 | **`calculate_tin_earthwork_volumes`** | 3D Earthworks | Computes 3D Delaunay TIN surface earthwork volumes (`topsoil_strip_volume_m3`, `cut_volume_bank_m3`, `fill_volume_compacted_m3`, and `net_earth_balance_m3`) between existing terrain and designed subgrade level (accounting for pavement structure thickness offset and zero-line `nullvonal` sub-triangle integration) directly from CAD spot-elevation layers or 3D point clouds without Civil 3D. |
 | 17 | **`compare_drawing_and_boq_revisions`** | Revisions | Compares Old (`R0` / Design) vs. New (`R1` / As-Built) CAD drawings and/or BoQ Excel workbooks, reporting spatial polygon additions/removals (`New - Old` and `Old - New`), linear/point deltas, row-level BoQ diffs, and ready-to-insert variation order payloads. |
+| 18 | **`calculate_trench_earthwork_and_bedding`** | Utilities & Earthworks | Computes complete **MSZ EN 1610 / DIN 4124** pipe-trench and manhole-pit earthworks: depth-banded excavation (`0–1.5 m`, `1.5–3.0 m`, `>3.0 m`), machine vs. hand excavation split, lower bedding ($\text{m}^3$), pipe-zone protective cover ($\text{m}^3$), exact pipe & manhole volume displacement ($\text{m}^3$), native soil backfill ($\text{m}^3$), excess displaced spoil haul-off ($\text{m}^3$), two-sided trench shoring ($\text{m}^2$), warning tape ($\text{m}$), and geotextile wrapping ($\text{m}^2$). |
+| 19 | **`compare_supplier_quotes_and_build_bid_tab`** | Bid Tabulation | Normalizes multiple supplier quotes (`.xlsx`, `.pdf`, or structured lines) onto a **True Landed Unit Price** basis by calculating total package weight, truckload counts (`24 t`), pallet counts, freight charges, crane unloading fees, and non-refundable pallet/packaging surcharges; detects fine-print commercial traps (`EN`/`DE`/`HU`), writes a color-coded Excel Bid Tabulation (`Ártükör.xlsx`), and outputs ready-to-apply `BoQRowPricingInput` payloads. |
+| 20 | **`calculate_cross_section_and_embankment_qto`** | Road Cross-Sections | Computes road typical cross-section (*mintakeresztszelvény*) quantities along alignments: crushed-stone shoulders ($\text{m}^2$, compacted $\text{m}^3$, order $\text{m}^3$, and tonnes $\text{t}$ including outer batter-slope wedge), inclined embankment/cut slope area ($\text{m}^2$), slope topsoil spreading ($\text{m}^3$), hydroseeding ($\text{m}^2$), and trapezoidal roadside drainage/infiltration ditch excavation ($\text{m}^3$), lining ($\text{m}^2$), washed gravel fill ($\text{m}^3$), and geotextile wrap ($\text{m}^2$). |
+| 21 | **`generate_progress_certificate`** | Progress Billing | Generates official Construction Measurement Sheets (*Felmérési Napló*) and Monthly Progress Payment Certificates (*Teljesítésigazolás* / FIDIC IPC / VOB/B *Abschlagsrechnung*) from contracted BoQ workbooks and/or progress entries; computes previous, current, and cumulative quantities/amounts, flags $>100\%$ quantity overruns (*Pótmunka*), applies advance repayment and retention deductions, and exports a 2-sheet Excel workbook with live formulas and signature blocks. |
 
 ---
 

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.6.0] - 2026-11-17
+
+### Added
+- **Tool 18 (`calculate_trench_earthwork_and_bedding`):** Detailed **MSZ EN 1610 / DIN 4124** utility pipe-trench and manhole-pit earthwork engine (`src/civil_qto_mcp/cad/trench_earthwork_calculator.py`) computing depth-banded excavation (`0–1.5 m`, `1.5–3.0 m`, `>3.0 m`), machine vs. hand excavation split, lower bedding (`m3`), pipe-zone protective cover (`m3`), exact pipe & manhole volume displacement (`m3`), native backfill (`m3`), excess spoil haul-off (`m3`), two-sided shoring (`m2`), warning tape (`m`), and geotextile wrapping (`m2`).
+- **Tool 19 (`compare_supplier_quotes_and_build_bid_tab`):** Multi-supplier quote reader & Bid Tabulation (`Ártükör.xlsx`) generator (`src/civil_qto_mcp/boq/supplier_bid_tabulator.py`) normalizing `.xlsx`, `.pdf`, or structured quotes onto a **True Landed Unit Price** basis (allocating truckload freight, crane unloading, and non-refundable pallet/packaging surcharges), scanning for commercial fine-print traps, and outputting ready-to-apply `BoQRowPricingInput` records.
+- **Tool 20 (`calculate_cross_section_and_embankment_qto`):** Road typical cross-section (*mintakeresztszelvény*) calculator (`src/civil_qto_mcp/cad/cross_section_calculator.py`) computing crushed-stone shoulders (`m2`, compacted `m3`, order `m3`, and tonnes `t` including outer batter-slope wedge), inclined slope area (`m2`), slope topsoil (`m3`), hydroseeding (`m2`), and trapezoidal roadside drainage/infiltration ditch excavation, lining, washed gravel fill, and geotextile wrap.
+- **Tool 21 (`generate_progress_certificate`):** Construction Measurement Sheet (*Felmérési Napló*) and Monthly Progress Payment Certificate (*Teljesítésigazolás* / FIDIC IPC) generator (`src/civil_qto_mcp/boq/progress_billing_generator.py`) computing previous, current, and cumulative quantities/amounts, flagging $>100\%$ quantity overruns (*Pótmunka*), applying advance repayment and retention deductions, and exporting a 2-sheet Excel workbook with live formulas.
+- Added `tests/test_v06_workflows.py` (41 total passing tests).
+
+---
+
 ## [0.5.0] - 2026-11-16
 
 ### Added

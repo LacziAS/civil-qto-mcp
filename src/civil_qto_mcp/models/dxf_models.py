@@ -734,5 +734,299 @@ class TinEarthworkReport(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+# -----------------------------------------------------------------------------
+# v0.6 MODELS: Detailed Utility Trench Earthwork, Bedding, Backfill & Shoring
+# -----------------------------------------------------------------------------
+
+
+class TrenchPipeSegmentInput(BaseModel):
+    """Input definition of a utility pipe segment for detailed EN 1610 / DIN 4124 trench calculation."""
+
+    segment_id: str = Field(description="Pipe span identifier (e.g., 'CS-01..CS-02', 'V-1').")
+    utility_type: Literal[
+        "STORM_DRAIN",
+        "GRAVITY_SEWER",
+        "WATER_PRESSURE",
+        "ELECTRIC_CABLE",
+        "TELECOM_CONDUIT",
+        "GAS_PIPELINE",
+    ] = Field(default="STORM_DRAIN", description="Utility category.")
+    pipe_material: str = Field(
+        default="KG-PVC",
+        description="Pipe material (e.g., 'KG-PVC', 'PP', 'KPE', 'PE100', 'CONCRETE', 'DUCTILE_IRON').",
+    )
+    nominal_diameter_dn_mm: int = Field(
+        default=200, gt=0, description="Nominal diameter DN in millimeters (e.g., 160, 200, 315, 400)."
+    )
+    outer_diameter_mm: float | None = Field(
+        default=None,
+        description="Optional exact outer diameter OD in mm (auto-calculated from material & DN if omitted).",
+    )
+    length_m: float = Field(gt=0.0, description="Horizontal center-to-center or net trench length in meters.")
+    start_depth_to_invert_m: float = Field(
+        gt=0.0, description="Depth from surface to pipe invert at start of span in meters."
+    )
+    end_depth_to_invert_m: float | None = Field(
+        default=None,
+        description="Depth from surface to pipe invert at end of span in meters (defaults to start_depth_to_invert_m).",
+    )
+    pavement_box_deduction_m: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Thickness of road/pavement structure already excavated above trench (m) to avoid double counting.",
+    )
+    lower_bedding_thickness_m: float = Field(
+        default=0.10,
+        ge=0.0,
+        description="Compacted thickness of lower sand/gravel bedding below pipe barrel in meters (default 0.10m).",
+    )
+    protective_cover_above_crown_m: float = Field(
+        default=0.30,
+        ge=0.0,
+        description="Compacted height of protective sand/gravel zone above pipe crown in meters (default 0.30m).",
+    )
+    trench_wall_mode: Literal["VERTICAL_SHORED", "SLOPED_UNSHORED"] = Field(
+        default="VERTICAL_SHORED",
+        description="'VERTICAL_SHORED' (függőleges dúcolt) or 'SLOPED_UNSHORED' (rézsűs munkagödör).",
+    )
+    slope_h_to_v: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Horizontal:Vertical batter slope ratio when SLOPED_UNSHORED (e.g., 0.5 for 2:1 steep, 1.0 for 1:1).",
+    )
+    custom_bottom_width_m: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Optional override for trench bottom width in meters (if omitted, computed per MSZ EN 1610 / DIN 4124).",
+    )
+    crossings_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of existing utility crossings along this span requiring hand excavation protection.",
+    )
+    wrap_pipe_zone_in_geotextile: bool = Field(
+        default=False,
+        description="Whether the bedding and pipe zone are wrapped in separation geotextile.",
+    )
+
+
+class TrenchManholePitInput(BaseModel):
+    """Input definition of a manhole or road gully excavation pit along a trench."""
+
+    node_id: str = Field(description="Manhole or gully identifier (e.g., 'CS-01', 'VA-01').")
+    nominal_diameter_mm: int = Field(
+        default=1000, gt=0, description="Nominal diameter in mm (1000, 1200 for manholes, 500 for gullies)."
+    )
+    outer_diameter_m: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Outer structure diameter/width in meters (auto-estimated if omitted: e.g., 1.24m for DN1000).",
+    )
+    depth_to_invert_m: float = Field(gt=0.0, description="Total depth from surface to invert in meters.")
+    base_slab_thickness_m: float = Field(
+        default=0.20, ge=0.0, description="Thickness of manhole base bottom below invert in meters (default 0.20m)."
+    )
+    under_base_bedding_m: float = Field(
+        default=0.15,
+        ge=0.0,
+        description="Crushed stone or lean concrete bedding thickness beneath manhole base in meters (default 0.15m).",
+    )
+    working_space_m: float = Field(
+        default=0.50, ge=0.20, description="Working space around manhole outer wall in meters (DIN 4124 default 0.50m)."
+    )
+    pavement_box_deduction_m: float = Field(
+        default=0.0, ge=0.0, description="Road structure box thickness already excavated at top in meters."
+    )
+
+
+class TrenchSegmentBreakdown(BaseModel):
+    """Computed earthwork, bedding, backfill, shoring, and ancillary quantities for a single pipe span."""
+
+    segment_id: str
+    utility_type: str
+    pipe_material: str
+    nominal_diameter_dn_mm: int
+    outer_diameter_m: float
+    length_m: float
+    trench_bottom_width_m: float
+    avg_total_excavation_depth_m: float
+    total_excavation_m3: float
+    excavation_0_to_1_5m_m3: float
+    excavation_1_5_to_3_0m_m3: float
+    excavation_over_3_0m_m3: float
+    machine_excavation_m3: float
+    hand_excavation_m3: float
+    lower_bedding_net_m3: float
+    pipe_zone_cover_net_m3: float
+    total_bedding_and_pipe_zone_net_m3: float
+    pipe_displacement_volume_m3: float
+    main_backfill_from_excavated_m3: float
+    excess_displaced_spoil_m3: float
+    shoring_area_m2: float
+    warning_tape_length_m: float
+    geotextile_wrap_area_m2: float
+
+
+class TrenchManholePitBreakdown(BaseModel):
+    """Computed earthwork, bedding, displacement, and shoring for a single manhole/gully pit."""
+
+    node_id: str
+    nominal_diameter_mm: int
+    outer_diameter_m: float
+    pit_width_m: float
+    total_excavation_depth_m: float
+    pit_excavation_m3: float
+    under_base_bedding_m3: float
+    structure_displacement_m3: float
+    pit_backfill_m3: float
+    pit_excess_spoil_m3: float
+    pit_shoring_area_m2: float
+
+
+class TrenchEarthworkAndBeddingReport(BaseModel):
+    """Output schema for Tool 18: calculate_trench_earthwork_and_bedding."""
+
+    standard_profile: str = Field(
+        description="Applied standard profile ('EN_1610_DIN_4124' or 'HU_MSZ_EN_1610_TERC')."
+    )
+    total_pipe_length_m: float
+    manhole_pits_count: int
+    shoring_depth_threshold_m: float
+    hand_excavation_ratio_applied: float
+    bedding_compaction_and_loss_factor: float
+    bedding_bulk_density_t_per_m3: float
+    total_excavation_m3: float
+    excavation_0_to_1_5m_m3: float
+    excavation_1_5_to_3_0m_m3: float
+    excavation_over_3_0m_m3: float
+    total_machine_excavation_m3: float
+    total_hand_excavation_m3: float
+    total_lower_bedding_net_m3: float
+    total_pipe_zone_cover_net_m3: float
+    total_manhole_under_bedding_net_m3: float
+    total_bedding_and_zone_net_m3: float
+    total_bedding_order_volume_m3: float
+    total_bedding_order_tonnage_t: float
+    total_pipe_and_manhole_displacement_m3: float
+    total_main_backfill_m3: float
+    total_excess_spoil_haul_off_m3: float
+    total_shoring_area_m2: float
+    total_warning_tape_m: float
+    total_geotextile_wrap_m2: float
+    pipe_breakdowns: list[TrenchSegmentBreakdown] = Field(default_factory=list)
+    manhole_pit_breakdowns: list[TrenchManholePitBreakdown] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
+# v0.6 MODELS: Road Typical Cross-Section, Shoulder, Embankment & Ditch QTO
+# -----------------------------------------------------------------------------
+
+
+class RoadCrossSectionSegmentInput(BaseModel):
+    """Input specification of a road typical cross-section (mintakeresztszelvény) along a road alignment."""
+
+    segment_id: str = Field(default="SEC-01", description="Road section identifier (e.g., '0+000..0+250').")
+    length_m: float = Field(gt=0.0, description="Alignment centerline length of this road section in meters.")
+    shoulder_width_left_m: float = Field(
+        default=1.00, ge=0.0, description="Left crushed-stone/unpaved road shoulder width in meters (padkaszélesség)."
+    )
+    shoulder_width_right_m: float = Field(
+        default=1.00, ge=0.0, description="Right crushed-stone/unpaved road shoulder width in meters (padkaszélesség)."
+    )
+    shoulder_thickness_cm: float = Field(
+        default=15.0, ge=0.0, description="Compacted shoulder layer thickness in centimeters (default 15.0 cm)."
+    )
+    embankment_height_left_m: float = Field(
+        default=0.60, ge=0.0, description="Average embankment/cut slope vertical height on the left side in meters."
+    )
+    embankment_height_right_m: float = Field(
+        default=0.60, ge=0.0, description="Average embankment/cut slope vertical height on the right side in meters."
+    )
+    slope_ratio_h_to_v: float = Field(
+        default=1.5, gt=0.0, description="Embankment/cut batter slope ratio H:V (e.g., 1.5 for 1:1.5 standard slope)."
+    )
+    slope_topsoil_thickness_m: float = Field(
+        default=0.10, ge=0.0, description="Topsoil (humuszterítés) thickness applied on inclined slopes in meters."
+    )
+    ditch_sides: Literal["NONE", "LEFT", "RIGHT", "BOTH"] = Field(
+        default="RIGHT",
+        description="Which side(s) of the road have a drainage or infiltration ditch ('NONE', 'LEFT', 'RIGHT', 'BOTH').",
+    )
+    ditch_bottom_width_m: float = Field(
+        default=0.40, ge=0.0, description="Bottom width of the trapezoidal roadside ditch in meters (default 0.40m)."
+    )
+    ditch_depth_m: float = Field(
+        default=0.60, ge=0.0, description="Vertical depth of the roadside ditch in meters (default 0.60m)."
+    )
+    ditch_inner_slope_h_to_v: float = Field(
+        default=1.5, gt=0.0, description="Inner (roadside) ditch slope ratio H:V (default 1.5 for 1:1.5)."
+    )
+    ditch_outer_slope_h_to_v: float = Field(
+        default=1.5, gt=0.0, description="Outer (field-side) ditch slope ratio H:V (default 1.5 for 1:1.5)."
+    )
+    ditch_lining_type: Literal[
+        "UNLINED_GRASS",
+        "PRECAST_CONCRETE_ELEMENT",
+        "GRAVEL_INFILTRATION_TRENCH",
+        "STONE_RIPRAP",
+    ] = Field(
+        default="UNLINED_GRASS",
+        description="Ditch surface or filling type ('UNLINED_GRASS', 'PRECAST_CONCRETE_ELEMENT', 'GRAVEL_INFILTRATION_TRENCH', 'STONE_RIPRAP').",
+    )
+    infiltration_gravel_depth_m: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="For GRAVEL_INFILTRATION_TRENCH (szikkasztóárok): depth of 16/32 washed gravel fill in meters.",
+    )
+
+
+class RoadCrossSectionSegmentBreakdown(BaseModel):
+    """Calculated shoulder, slope, topsoil, grassing, and ditch quantities for a single road segment."""
+
+    segment_id: str
+    length_m: float
+    shoulder_top_area_m2: float
+    shoulder_compacted_volume_m3: float
+    shoulder_order_volume_m3: float
+    shoulder_order_tonnage_t: float
+    slope_horizontal_projection_m2: float
+    slope_inclined_surface_area_m2: float
+    slope_topsoil_spread_volume_m3: float
+    ditch_total_length_m: float
+    ditch_top_width_m: float
+    ditch_excavation_volume_m3: float
+    ditch_wetted_lining_area_m2: float
+    infiltration_gravel_volume_m3: float
+    infiltration_geotextile_wrap_m2: float
+
+
+class CrossSectionAndEmbankmentReport(BaseModel):
+    """Output schema for Tool 20: calculate_cross_section_and_embankment_qto."""
+
+    segments_count: int
+    total_alignment_length_m: float
+    shoulder_compaction_factor: float
+    shoulder_bulk_density_t_per_m3: float
+    total_shoulder_top_area_m2: float
+    total_shoulder_compacted_volume_m3: float
+    total_shoulder_order_volume_m3: float
+    total_shoulder_order_tonnage_t: float
+    total_slope_inclined_area_m2: float
+    total_slope_topsoil_volume_m3: float
+    total_ditch_length_m: float
+    total_ditch_excavation_m3: float
+    total_ditch_lining_or_grass_m2: float
+    total_grass_seeding_area_m2: float = Field(
+        description="Total hydroseeding / grassing area (inclined slopes + unlined grass ditches) in m2."
+    )
+    total_infiltration_gravel_m3: float
+    total_infiltration_geotextile_m2: float
+    segment_breakdowns: list[RoadCrossSectionSegmentBreakdown] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+
+
 
 

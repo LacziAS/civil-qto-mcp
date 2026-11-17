@@ -428,4 +428,261 @@ class RevisionComparisonReport(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+# -----------------------------------------------------------------------------
+# v0.6 MODELS: Supplier Quote Reader & Bid Tabulation (Ártükör) Engine
+# -----------------------------------------------------------------------------
+
+
+class BidTabTargetItemInput(BaseModel):
+    """A required material or work item in a procurement package to compare across suppliers."""
+
+    item_id: str = Field(description="Short item identifier (e.g., 'TK-01', 'SZEG-01', 'CSO-01').")
+    description: str = Field(description="Technical specification of the required item.")
+    unit: str = Field(default="m2", description="Measurement unit (e.g., 'm2', 'm', 'fm', 'm3', 'db', 't').")
+    required_quantity: float = Field(gt=0.0, description="Required project quantity.")
+    unit_weight_kg: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Optional unit weight in kg (e.g., 180.0 kg/m2 for 8cm paving block) for truckload calculation.",
+    )
+    units_per_pallet: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Optional quantity per pallet (e.g., 9.6 m2/pallet or 36 db/pallet) for pallet/crane fee calculation.",
+    )
+    boq_sheet_name: str | None = Field(
+        default=None, description="Optional target BoQ worksheet name for direct pricing write-back."
+    )
+    boq_row_number: int | None = Field(
+        default=None, description="Optional target BoQ row number for direct pricing write-back."
+    )
+
+
+class SupplierQuoteLineInput(BaseModel):
+    """A single quoted line item from a supplier."""
+
+    item_id: str = Field(description="Matching `item_id` from `BidTabTargetItemInput`.")
+    quoted_description: str = Field(default="", description="Supplier's product name or alternative note.")
+    quoted_unit_price: float = Field(ge=0.0, description="Quoted net unit price before global discount and freight.")
+    item_specific_surcharge_per_unit: float = Field(
+        default=0.0, ge=0.0, description="Optional item-specific surcharge per unit."
+    )
+
+
+class SupplierQuoteInput(BaseModel):
+    """Complete quote submission from a single supplier (structured lines and/or .xlsx/.pdf file)."""
+
+    supplier_name: str = Field(description="Name of the supplier or manufacturer (e.g., 'Leier', 'Semmelrock', 'Szebeton').")
+    quote_reference: str = Field(default="", description="Quote number or date.")
+    quote_file_path: str | None = Field(
+        default=None,
+        description="Optional path to a supplier quote Excel (.xlsx) or PDF (.pdf) file to auto-extract prices and terms.",
+    )
+    lines: list[SupplierQuoteLineInput] = Field(
+        default_factory=list, description="Quoted unit prices per target item_id."
+    )
+    global_discount_percent: float = Field(
+        default=0.0, ge=0.0, le=90.0, description="Global percentage discount off quoted unit prices (0 to 90)."
+    )
+    freight_mode: Literal["INCLUDED", "LUMP_SUM", "PER_TRUCKLOAD", "PER_TONNE"] = Field(
+        default="INCLUDED",
+        description="How transport/freight is charged ('INCLUDED', 'LUMP_SUM', 'PER_TRUCKLOAD', 'PER_TONNE').",
+    )
+    freight_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Freight fee (total if LUMP_SUM, per truck if PER_TRUCKLOAD, per tonne if PER_TONNE).",
+    )
+    truck_capacity_tonnes: float = Field(
+        default=24.0, gt=0.0, description="Payload capacity of one delivery truck in tonnes (default 24.0 t)."
+    )
+    unloading_fee_per_pallet: float = Field(
+        default=0.0, ge=0.0, description="Crane/forklift unloading fee per pallet (önrakodós daruzási díj)."
+    )
+    non_refundable_pallet_fee_per_pallet: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Non-refundable pallet usage/depreciation/packaging fee per pallet (raklaphasználati / csomagolási díj).",
+    )
+    payment_terms: str = Field(default="", description="Payment terms (e.g., '30 napos átutalás', 'Előre utalás').")
+    delivery_lead_time_days: int | None = Field(default=None, description="Delivery lead time in calendar days.")
+    notes_and_conditions: str = Field(
+        default="", description="Footer text, exclusions, or fine-print conditions from the quote."
+    )
+
+
+class SupplierPackageSummary(BaseModel):
+    """Normalized commercial and logistics summary for one supplier across the procurement package."""
+
+    supplier_name: str
+    quote_reference: str
+    quoted_items_count: int
+    coverage_percent: float
+    total_weight_tonnes: float
+    estimated_truckloads: int
+    estimated_pallets: int
+    ex_works_subtotal: float
+    discount_amount: float
+    net_material_subtotal: float
+    freight_cost_total: float
+    unloading_cost_total: float
+    pallet_and_packaging_cost_total: float
+    total_surcharges: float
+    surcharge_ratio_percent: float
+    total_landed_package_cost: float
+    payment_terms: str
+    delivery_lead_time_days: int | None = None
+    fine_print_warnings: list[str] = Field(default_factory=list)
+
+
+class BidTabItemComparisonRow(BaseModel):
+    """Apples-to-apples landed unit price comparison for a single target item across all suppliers."""
+
+    item_id: str
+    description: str
+    unit: str
+    required_quantity: float
+    supplier_quoted_unit_prices: dict[str, float] = Field(default_factory=dict)
+    supplier_landed_unit_prices: dict[str, float] = Field(default_factory=dict)
+    supplier_landed_totals: dict[str, float] = Field(default_factory=dict)
+    lowest_landed_supplier: str | None = None
+    lowest_landed_unit_price: float | None = None
+    lowest_landed_total: float | None = None
+    highest_landed_unit_price: float | None = None
+    price_spread_percent: float = 0.0
+
+
+class SupplierBidTabulationReport(BaseModel):
+    """Output schema for Tool 19: compare_supplier_quotes_and_build_bid_tab."""
+
+    package_name: str
+    currency: str = "HUF"
+    target_items_count: int
+    suppliers_compared_count: int
+    total_package_weight_tonnes: float
+    total_package_pallets: int
+    best_single_supplier: str | None = Field(
+        default=None,
+        description="Supplier with the lowest Total Landed Package Cost among suppliers covering 100% of items.",
+    )
+    best_single_supplier_landed_total: float | None = None
+    second_best_supplier_landed_total: float | None = None
+    single_supplier_savings_vs_second: float = 0.0
+    cherry_pick_split_landed_total: float = Field(
+        default=0.0,
+        description="Theoretical minimum landed total if each item is bought from its lowest landed-price supplier.",
+    )
+    output_xlsx_path: str | None = Field(
+        default=None,
+        description="Path to the generated formatted Bid Tabulation (Ártükör) Excel workbook.",
+    )
+    supplier_summaries: list[SupplierPackageSummary] = Field(default_factory=list)
+    item_comparisons: list[BidTabItemComparisonRow] = Field(default_factory=list)
+    recommended_boq_pricings: list[BoQRowPricingInput] = Field(
+        default_factory=list,
+        description="Ready-to-pass `BoQRowPricingInput` list using the winning landed unit prices (plus optional contractor_markup_factor).",
+    )
+    warnings: list[str] = Field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
+# v0.6 MODELS: Construction Measurement Sheet & Progress Billing (Teljesítésigazolás)
+# -----------------------------------------------------------------------------
+
+
+class ProgressItemEntryInput(BaseModel):
+    """Progress / measurement update for a single contracted BoQ item."""
+
+    item_key: str = Field(
+        description="Row identifier or item code (e.g., 'IV.1.::12', '1.1', or exact item code/row number)."
+    )
+    description: str | None = Field(
+        default=None, description="Optional item description (if standalone without `contract_boq_xlsx_path`)."
+    )
+    unit: str | None = Field(default=None, description="Optional measurement unit.")
+    contracted_quantity: float | None = Field(
+        default=None, gt=0.0, description="Optional contracted quantity (required if standalone without Excel file)."
+    )
+    contracted_unit_price: float | None = Field(
+        default=None, ge=0.0, description="Optional contracted net unit price."
+    )
+    previous_cumulative_quantity: float = Field(
+        default=0.0, ge=0.0, description="Previously certified cumulative quantity prior to this period."
+    )
+    current_period_quantity: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Quantity completed in the current billing period (mutually supportive with `target_cumulative_percent`).",
+    )
+    target_cumulative_percent: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Target cumulative completion percentage (e.g., 50.0 or 100.0) if `current_period_quantity` is not given.",
+    )
+    measurement_proof_formula: str = Field(
+        default="",
+        description="Measurement log formula / survey proof (e.g., 'Geodéziai felmérés: 25,0 m × 6,0 m = 150,0 m2').",
+    )
+
+
+class ProgressCertificateLineResult(BaseModel):
+    """Computed financial and quantity progress record for a single contracted line item."""
+
+    item_key: str
+    sheet_name: str
+    row_number: int | None = None
+    description: str
+    unit: str
+    contracted_quantity: float
+    contracted_unit_price: float
+    contracted_total_amount: float
+    previous_cumulative_quantity: float
+    current_period_quantity: float
+    new_cumulative_quantity: float
+    completion_percent: float
+    previous_cumulative_amount: float
+    current_period_amount: float
+    new_cumulative_amount: float
+    remaining_contract_amount: float
+    overrun_quantity: float = 0.0
+    overrun_amount: float = 0.0
+    measurement_proof_formula: str = ""
+
+
+class ProgressCertificateReport(BaseModel):
+    """Output schema for Tool 21: generate_progress_certificate."""
+
+    project_name: str
+    certificate_number: str
+    billing_period: str
+    currency: str = "HUF"
+    items_processed_count: int
+    overrun_items_count: int
+    total_contract_amount: float
+    previous_cumulative_amount: float
+    current_period_gross_work_amount: float
+    new_cumulative_amount: float
+    overall_completion_percent: float
+    remaining_contract_balance: float
+    total_overrun_variation_amount: float
+    advance_deduction_percent: float
+    advance_deduction_amount: float
+    retention_percent: float
+    retention_deduction_amount: float
+    net_invoicable_amount: float = Field(
+        description="Current period net payable amount after advance repayment and retention deductions."
+    )
+    vat_percent: float = 27.0
+    vat_amount: float = 0.0
+    gross_invoicable_amount: float = 0.0
+    output_xlsx_path: str | None = Field(
+        default=None,
+        description="Path to the generated 2-sheet Excel workbook ('1_Teljesítésigazolás' and '2_Felmérési_Napló').",
+    )
+    lines: list[ProgressCertificateLineResult] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+
+
 
