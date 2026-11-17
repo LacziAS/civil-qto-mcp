@@ -269,11 +269,16 @@ class TechnologicalCompletenessReport(BaseModel):
     """Output schema for Tool 13: audit_technological_completeness."""
 
     file_path: str
+    project_profile: str = "STANDARD"
     total_items_scanned: int
     active_chains_detected: list[str] = Field(default_factory=list)
     missing_companions_count: int
     findings: list[MissingCompanionFinding] = Field(default_factory=list)
     ready_supplemental_items: list[BoQSupplementalItemInput] = Field(default_factory=list)
+    technical_clarification_questions: list[str] = Field(
+        default_factory=list,
+        description="Ready-to-send technical clarification questions (Műszaki Tisztázó Kérdések / RFIs) for the client or general contractor.",
+    )
     warnings: list[str] = Field(default_factory=list)
 
 

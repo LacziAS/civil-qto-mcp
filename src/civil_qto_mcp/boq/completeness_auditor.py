@@ -49,11 +49,13 @@ def audit_technological_completeness(
     cad_curb_length_m: float | None = None,
     cad_asphalt_tie_in_length_m: float | None = None,
     cad_shallow_pipe_concrete_m3: float | None = None,
+    project_profile: Literal["STANDARD", "LIDL_BBS", "GENERAL_CONTRACTOR_TENDER"] = "STANDARD",
     locale: Literal["en", "de", "hu"] = "hu",
 ) -> TechnologicalCompletenessReport:
     """
     Scan a BoQ workbook for technologically omitted companion items (K-tétel candidates)
-    across roadworks, block paving, gravity sewers, pressure water lines, foundations, and industrial slabs.
+    across roadworks, block paving, gravity sewers, pressure water lines, foundations, and industrial slabs,
+    including client-specific profile checks (e.g., LIDL_BBS) and RFI question generation.
     """
     audit_rep = inspect_and_audit_boq_xlsx(
         file_path=boq_xlsx_path,
@@ -373,13 +375,80 @@ def audit_technological_completeness(
                 lab_p=1800.0,
             )
 
+    # -------------------------------------------------------------------------
+    # 7. LIDL_BBS PROFILE CHECKS (Building Book Specification Rules)
+    # -------------------------------------------------------------------------
+    if project_profile == "LIDL_BBS":
+        grass_grid_items = [
+            it
+            for it in items
+            if any(k in it.description.lower() for k in ("gyeprács", "gyepracs", "grass grid", "rasengitter"))
+        ]
+        if grass_grid_items:
+            gg_trig = grass_grid_items[0]
+            gg_area = sum(it.canonical_quantity for it in grass_grid_items)
+            _add_finding(
+                rule_id="LIDL-01-GRASS-GRID-BBS-VIOLATION",
+                chain="PAVING_BLOCK_CHAIN",
+                severity="CRITICAL_OMISSION",
+                trig_item=gg_trig,
+                desc_hu="20×20×8 cm vastag antracit zökkenőmentes térkő burkolat + fehér parkolócsík térkő építése (Lidl BBS előírás szerint gyeprács helyett)",
+                desc_en="20x20x8 cm anthracite chamferless concrete block paving + white parking line blocks per Lidl BBS (replacing grass grid)",
+                qty=gg_area,
+                unit="m2",
+                just_hu="Lidl BBS szabvány szerint a parkolóállásokban gyeprács helyett 20×20×8 cm vastag antracit zökkenőmentes térkő és fehér parkolójelölő kő alkalmazandó.",
+                just_en="Lidl BBS standard mandates 20x20x8 cm anthracite chamferless paving blocks with white marker blocks in parking bays instead of grass grids.",
+                mat_p=6800.0,
+                lab_p=4500.0,
+            )
+
+        if (paving_items and asphalt_items) and not _has_any(
+            items, ("rozsdamentes", "szögacél", "burkolatelválasztó", "stainless", "edelstahl")
+        ):
+            sep_trig = paving_items[0]
+            sep_len = cad_asphalt_tie_in_length_m or 25.0
+            _add_finding(
+                rule_id="LIDL-02-STAINLESS-SEPARATOR",
+                chain="PAVING_BLOCK_CHAIN",
+                severity="RECOMMENDED_COMPANION",
+                trig_item=sep_trig,
+                desc_hu="Lidl szabvány szerinti rozsdamentes szögacél burkolatelválasztó profil beépítése térkő és aszfalt burkolatváltásnál",
+                desc_en="Lidl-standard stainless steel L-angle edge separator profile at block paving / asphalt transitions",
+                qty=sep_len,
+                unit="fm" if locale == "hu" else "m",
+                just_hu="Lidl BBS előírás szerint a térkő és aszfalt burkolatváltásoknál rozsdamentes szögacél elválasztó profil beépítése szükséges.",
+                just_en="Lidl BBS requires a stainless steel angle edge restraint at transitions between block paving and asphalt.",
+                mat_p=9500.0,
+                lab_p=4500.0,
+            )
+
+    # Generate numbered Technical Clarification Questions (RFI / Műszaki Tisztázó Kérdések)
+    clarification_questions: list[str] = []
+    for idx, f in enumerate(findings, start=1):
+        if locale == "hu":
+            q_str = (
+                f"{idx}. [{f.trigger_sheet} – {f.rule_id}] {f.engineering_justification} "
+                f"Kérjük szíves visszajelzésüket, hogy a '{f.missing_item_description}' "
+                f"({f.recommended_quantity:.2f} {f.recommended_unit}) tételt pótlólagos K-tételként "
+                f"vegyük-e fel az ajánlatba!"
+            )
+        else:
+            q_str = (
+                f"{idx}. [{f.trigger_sheet} – {f.rule_id}] {f.engineering_justification} "
+                f"Please confirm whether '{f.missing_item_description}' "
+                f"({f.recommended_quantity:.2f} {f.recommended_unit}) should be included as a supplemental BoQ item."
+            )
+        clarification_questions.append(q_str)
+
     ready_supps = [f.ready_supplemental_item for f in findings]
     return TechnologicalCompletenessReport(
         file_path=str(Path(boq_xlsx_path).resolve()),
+        project_profile=project_profile,
         total_items_scanned=len(items),
         active_chains_detected=active_chains,
         missing_companions_count=len(findings),
         findings=findings,
         ready_supplemental_items=ready_supps,
+        technical_clarification_questions=clarification_questions,
         warnings=warnings_list,
     )

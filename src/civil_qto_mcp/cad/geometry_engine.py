@@ -65,6 +65,47 @@ def clean_cad_text(raw_text: str) -> str:
     return " | ".join(lines)
 
 
+def extract_mleader_info(
+    entity: DXFEntity, unit_scale_to_meter: float = 1.0
+) -> tuple[str, tuple[float, float] | None, list[tuple[float, float]]]:
+    """
+    Extract (cleaned_text, text_anchor_xy_m, arrow_tip_points_xy_m) from a MULTILEADER / MLEADER entity.
+    """
+    if entity.dxftype() not in ("MULTILEADER", "MLEADER"):
+        return "", None, []
+
+    ctx = getattr(entity, "context", None)
+    if ctx is None:
+        return "", None, []
+
+    raw_text = ""
+    text_anchor: tuple[float, float] | None = None
+    mtext_data = getattr(ctx, "mtext", None)
+    if mtext_data is not None:
+        raw_text = str(getattr(mtext_data, "default_content", "") or "")
+        ins = getattr(mtext_data, "insert", None)
+        if ins is not None:
+            text_anchor = (
+                round(float(ins.x) * unit_scale_to_meter, 3),
+                round(float(ins.y) * unit_scale_to_meter, 3),
+            )
+
+    arrow_tips: list[tuple[float, float]] = []
+    for ldr in getattr(ctx, "leaders", []) or []:
+        for ln in getattr(ldr, "lines", []) or []:
+            verts = getattr(ln, "vertices", None)
+            if verts:
+                v0 = verts[0]
+                arrow_tips.append(
+                    (
+                        round(float(v0.x) * unit_scale_to_meter, 3),
+                        round(float(v0.y) * unit_scale_to_meter, 3),
+                    )
+                )
+
+    return clean_cad_text(raw_text), text_anchor, arrow_tips
+
+
 def iter_target_entities(
     msp: Iterable[DXFEntity],
     target_layers: set[str] | None = None,
@@ -520,6 +561,41 @@ def extract_polygons_from_entities(
         else:
             noded = unary_union(loose_segments_for_polygonize)
         polygonized = list(polygonize(noded))
+
+        # If open segments have corner gaps larger than snap_tolerance_m (1cm) but <= auto_close_gap_tolerance_m (10cm),
+        # bridge nearest endpoints across segments/layers and re-run polygonize!
+        if auto_close_gap_tolerance_m > snap_tolerance_m and len(loose_segments_for_polygonize) >= 2:
+            endpoints: list[tuple[float, float]] = []
+            for seg in loose_segments_for_polygonize:
+                c_list = list(seg.coords)
+                if len(c_list) >= 2:
+                    endpoints.append((float(c_list[0][0]), float(c_list[0][1])))
+                    endpoints.append((float(c_list[-1][0]), float(c_list[-1][1])))
+
+            bridge_lines: list[LineString] = []
+            max_bridged_gap = 0.0
+            for i in range(len(endpoints)):
+                p_i = endpoints[i]
+                for j in range(i + 1, len(endpoints)):
+                    p_j = endpoints[j]
+                    dist = math.hypot(p_i[0] - p_j[0], p_i[1] - p_j[1])
+                    if snap_tolerance_m < dist <= auto_close_gap_tolerance_m:
+                        bridge_lines.append(LineString([p_i, p_j]))
+                        max_bridged_gap = max(max_bridged_gap, dist)
+
+            if bridge_lines:
+                combined_segs = [*loose_segments_for_polygonize, *bridge_lines]
+                noded_bridged = unary_union(combined_segs)
+                bridged_polys = list(polygonize(noded_bridged))
+                old_area = sum(p.area for p in polygonized)
+                new_area = sum(p.area for p in bridged_polys)
+                if new_area > old_area + 1e-3:
+                    polygonized = bridged_polys
+                    warnings.append(
+                        f"Bridged {len(bridge_lines)} cross-segment/cross-layer corner gap(s) "
+                        f"(max gap={max_bridged_gap:.3f}m <= {auto_close_gap_tolerance_m}m) -> area={new_area:.2f}m2."
+                    )
+
         for poly in polygonized:
             polygons.extend(_clean_to_polygons(poly))
 

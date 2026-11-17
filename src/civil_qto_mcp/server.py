@@ -939,6 +939,15 @@ def audit_technological_completeness(
         float | None,
         Field(description="Optional C12/15 concrete encasement volume (m3) for shallow pipes (<1.0m cover)."),
     ] = None,
+    project_profile: Annotated[
+        Literal["STANDARD", "LIDL_BBS", "GENERAL_CONTRACTOR_TENDER"],
+        Field(
+            description=(
+                "Client/project specification profile ('STANDARD', 'LIDL_BBS' for Lidl Building Book "
+                "Specification rules, or 'GENERAL_CONTRACTOR_TENDER')."
+            )
+        ),
+    ] = "STANDARD",
     locale: Annotated[
         Literal["en", "de", "hu"],
         Field(description="Language for generated supplemental item descriptions ('en', 'de', or 'hu')."),
@@ -947,7 +956,8 @@ def audit_technological_completeness(
     """
     [v0.4 Tool 13] Audit a BoQ workbook against 6 civil engineering technological completeness chains
     (asphalt, block paving, gravity sewers, pressure water lines, RC foundations, industrial slabs)
-    and generate ready-to-insert `BoQSupplementalItemInput` (K-tétel) payloads for omitted items.
+    plus client profiles (`LIDL_BBS`), generating ready-to-insert `BoQSupplementalItemInput` (K-tétel)
+    payloads and numbered Technical Clarification Questions (`technical_clarification_questions`).
     """
     with contextlib.redirect_stdout(sys.stderr):
         return _audit_technological_completeness(
@@ -956,6 +966,7 @@ def audit_technological_completeness(
             cad_curb_length_m=cad_curb_length_m,
             cad_asphalt_tie_in_length_m=cad_asphalt_tie_in_length_m,
             cad_shallow_pipe_concrete_m3=cad_shallow_pipe_concrete_m3,
+            project_profile=project_profile,
             locale=locale,
         )
 

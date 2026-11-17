@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-21%20Tools-10b981.svg)](https://modelcontextprotocol.io/)
-[![Tests](https://img.shields.io/badge/pytest-41%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-43%20passed-brightgreen.svg)](tests/)
 
 **Deterministic Model Context Protocol (MCP) Server for Civil Engineering, Roadworks, Paving, Earthworks, Foundations & Utilities Quantity Take-Off (`.dxf` / `.dwg` / `.pdf`) and Bill of Quantities (`.xlsx` / `.xlsm`) Auditing.**
 

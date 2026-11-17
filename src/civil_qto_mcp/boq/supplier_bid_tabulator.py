@@ -74,6 +74,24 @@ FINE_PRINT_TRAPS: list[tuple[re.Pattern[str], str]] = [
     ),
 ]
 
+# Manufacturer-specific product brand synonym groups (KK Kavics Beton, Leier, Frühwald, SzeBeton, Pureco, HYDROTEC)
+MANUFACTURER_SYNONYM_GROUPS: list[tuple[str, ...]] = [
+    ("hullám", "8 cm", "solido", "rotterdam", "behaton", "hullámtérkő"),
+    ("6 cm", "piazza", "london", "classic"),
+    ("zökkenőmentes", "20x20x8", "20×20×8", "antracit", "nizza", "taverna"),
+    ("kiemelt", "útszegély", "k-szegély", "15x30", "15x25", "20x25"),
+    ("süllyesztett", "15x20", "10x25"),
+    ("kerti szegély", "5x20", "5×20"),
+    ("támfal", "lisszabon", "bordás kosár"),
+    ("aknafenék", "afe d100", "afe d120"),
+    ("szűkítő", "asz 100/60", "asz 120/60"),
+    ("aknagyűrű", "agy 100", "agy 120"),
+    ("víznyelő", "va-f", "va-gy", "duna 500"),
+    ("olajfogó", "tnc"),
+    ("záportározó", "tubo"),
+    ("résfolyóka", "envia"),
+]
+
 
 def _estimate_unit_weight_and_pallet_capacity(
     item: BidTabTargetItemInput,
@@ -186,16 +204,30 @@ def _parse_quote_file_if_needed(
         num_regex = re.compile(r"(?<!\d)(\d{1,3}(?:[\s\u00a0.]?\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\d)")
         for item in target_items:
             item_id_low = item.item_id.lower()
+            desc_low = item.description.lower()
             desc_tokens = [
                 w.lower()
                 for w in re.split(r"\W+", item.description)
                 if len(w) >= 4
             ]
+            # Collect brand/product synonyms for this target item
+            syn_tokens: set[str] = set()
+            for grp in MANUFACTURER_SYNONYM_GROUPS:
+                if any(g in desc_low for g in grp):
+                    syn_tokens.update(grp)
+
             for row_str in raw_text_rows:
                 row_low = row_str.lower()
+                # Skip footer/freight/pallet rows when matching product lines
+                if any(
+                    fk in row_low
+                    for fk in ("fuvardíj", "szállítási díj", "raklaphasználati", "daruzás", "önrakodós")
+                ):
+                    continue
                 id_match = item_id_low in row_low
                 tok_matches = sum(1 for t in desc_tokens if t in row_low)
-                if id_match or (desc_tokens and tok_matches >= max(1, len(desc_tokens) // 2)):
+                syn_match = any(st in row_low for st in syn_tokens if len(st) >= 4)
+                if id_match or syn_match or (desc_tokens and tok_matches >= max(1, len(desc_tokens) // 2)):
                     # Extract candidate unit prices from the row
                     candidates: list[float] = []
                     for m in num_regex.finditer(row_str):
@@ -206,7 +238,7 @@ def _parse_quote_file_if_needed(
                             raw_n = raw_n.replace(",", ".")
                         try:
                             val = float(raw_n)
-                            if val > 10.0 and abs(val - item.required_quantity) > 0.01:
+                            if val > 250.0 and abs(val - item.required_quantity) > 0.01:
                                 candidates.append(val)
                         except ValueError:
                             continue
@@ -220,6 +252,28 @@ def _parse_quote_file_if_needed(
                         )
                         matched_ids.add(item.item_id)
                         break
+
+    # Auto-extract freight rate, crane unloading, and pallet usage fees from quote file rows if not explicitly set
+    num_fee_re = re.compile(r"(\d{1,3}(?:[\s\u00a0.]?\d{3})+|\d{3,6})")
+    for row_str in raw_text_rows:
+        r_low = row_str.lower()
+        nums = [
+            float(m.group(1).replace(" ", "").replace("\u00a0", "").replace(".", ""))
+            for m in num_fee_re.finditer(row_str)
+        ]
+        valid_fees = [v for v in nums if 500.0 <= v <= 1_500_000.0]
+        if not valid_fees:
+            continue
+        fee_val = valid_fees[-1]
+        if quote.freight_rate == 0.0 and any(k in r_low for k in ("fuvardíj", "szállítási díj", "nyerges fuvar")):
+            quote.freight_rate = fee_val
+            quote.freight_mode = "PER_TRUCKLOAD" if any(k in r_low for k in ("forduló", "kamion", "nyerges", "24t")) else "LUMP_SUM"
+        elif quote.unloading_fee_per_pallet == 0.0 and any(k in r_low for k in ("önrakodós", "daruzás", "lerakodási díj")):
+            quote.unloading_fee_per_pallet = fee_val
+        elif quote.non_refundable_pallet_fee_per_pallet == 0.0 and any(
+            k in r_low for k in ("raklaphasználati", "kopási díj", "csomagolási díj")
+        ):
+            quote.non_refundable_pallet_fee_per_pallet = fee_val
 
     return existing_lines, "\n".join(notes_parts)
 

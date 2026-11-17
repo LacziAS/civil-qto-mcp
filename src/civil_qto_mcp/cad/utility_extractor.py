@@ -21,7 +21,11 @@ from shapely.geometry import Point, Polygon
 from shapely.strtree import STRtree
 
 from civil_qto_mcp.cad.dwg_loader import load_cad_document
-from civil_qto_mcp.cad.geometry_engine import clean_cad_text, extract_linear_segment
+from civil_qto_mcp.cad.geometry_engine import (
+    clean_cad_text,
+    extract_linear_segment,
+    extract_mleader_info,
+)
 from civil_qto_mcp.models.dxf_models import (
     PipeSegmentInfo,
     TrenchEarthworkSummary,
@@ -377,6 +381,18 @@ def extract_utility_network_and_levels(
                 w = ocs.to_wcs(Vec3(ins))
                 pt = Point(float(w.x) * unit_scale_to_meter, float(w.y) * unit_scale_to_meter)
                 callout_texts.append((pt, cleaned, handle))
+        elif dxftype in ("MULTILEADER", "MLEADER"):
+            ml_txt, txt_anchor, arrow_tips = extract_mleader_info(ent, unit_scale_to_meter)
+            if not ml_txt:
+                continue
+            if txt_anchor is not None:
+                for tip in arrow_tips:
+                    leader_segments.append((tip, txt_anchor))
+                callout_texts.append((Point(txt_anchor[0], txt_anchor[1]), ml_txt, handle))
+            elif arrow_tips:
+                tip0 = arrow_tips[0]
+                leader_segments.append((tip0, tip0))
+                callout_texts.append((Point(tip0[0], tip0[1]), ml_txt, handle))
 
     if nodes and callout_texts:
         node_tree = STRtree(node_points)
@@ -426,6 +442,25 @@ def extract_utility_network_and_levels(
                     target_node.matched_texts.append(txt_str)
                     if target_node.matched_via == "NONE":
                         target_node.matched_via = via_mode  # type: ignore[assignment]
+
+        # Step 2C: Schedule Table / Distant Node-ID Fallback (for manhole schedules in the corner of the sheet)
+        nodes_by_known_id: dict[str, UtilityNodeInfo] = {
+            n.node_id.upper(): n for n in nodes if not n.node_id.startswith("NODE_")
+        }
+        if nodes_by_known_id:
+            for _txt_pt, txt_str, _txt_handle in callout_texts:
+                m_id = NODE_ID_REGEX.search(txt_str)
+                if not m_id:
+                    continue
+                cand_id = m_id.group(1).upper()
+                if cand_id in nodes_by_known_id:
+                    target_node = nodes_by_known_id[cand_id]
+                    if (
+                        (target_node.cover_level_m is None or target_node.invert_level_m is None)
+                        and _apply_text_to_node(target_node, txt_str)
+                        and txt_str not in target_node.matched_texts
+                    ):
+                        target_node.matched_texts.append(txt_str)
 
     # -------------------------------------------------------------------------
     # 3. COMPUTE MANHOLE DEPTHS & CHECK PHYSICAL PLAUSIBILITY

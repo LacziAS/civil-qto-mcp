@@ -17,7 +17,11 @@ from ezdxf.lldxf.const import DXFError
 from ezdxf.math import Vec3
 
 from civil_qto_mcp.cad.dwg_loader import load_cad_document
-from civil_qto_mcp.cad.geometry_engine import check_entity_z_anomaly, clean_cad_text
+from civil_qto_mcp.cad.geometry_engine import (
+    check_entity_z_anomaly,
+    clean_cad_text,
+    extract_mleader_info,
+)
 from civil_qto_mcp.models.dxf_models import (
     BoundingBox2D,
     BoundingBox3D,
@@ -354,6 +358,14 @@ def inspect_civil_dxf(
             th = float(getattr(ent.dxf, th_attr, 0.0) or 0.0)
             if th > 0:
                 text_heights.append(th)
+        elif dxftype in ("MULTILEADER", "MLEADER"):
+            ml_txt, _, _ = extract_mleader_info(ent, 1.0)
+            if (
+                ml_txt
+                and len(layer_sample_texts[layer]) < max_sample_texts
+                and ml_txt not in layer_sample_texts[layer]
+            ):
+                layer_sample_texts[layer].append(ml_txt[:120])
         elif dxftype == "LINE" and len(pts3d) == 2:
             p_a = (round(pts3d[0][0], 3), round(pts3d[0][1], 3))
             p_b = (round(pts3d[1][0], 3), round(pts3d[1][1], 3))
