@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.6.1] - 2026-11-19
+
+### Added
+- **5 Built-In MCP Resources (`src/civil_qto_mcp/resources_and_prompts.py`):** Direct read-only engineering standards (`en1610-trench-widths`, `pavement-densities-and-factors`, `precast-manhole-catalogs`, `technological-completeness-chains`, and `hitl-3-step-protocol`).
+- **5 One-Click Engineering Workflow MCP Prompts:** `tender_full_audit`, `roadworks_and_paving_qto`, `utility_network_and_trench_qto`, `supplier_bid_tabulation`, and `monthly_progress_billing`.
+- **CAD Geometry & Callout Hardening (Tools 1–3):** Civil 3D `MULTILEADER` (`MLEADER`) arrow-tip & callout text extraction, distant manhole schedule Node-ID matching (`Step 2C`), and cross-layer boundary corner-gap bridging (`<= 0.10 m`) for multi-layer `polygonize`.
+- **Manufacturer Quote Synonyms & Lidl BBS Profile (Tools 13 & 19):** Brand synonym matching (`Leier Solido/Piazza`, `KK Rotterdam/London/Lisszabon`, `Frühwald Behaton/Classic`, `SzeBeton`, `Pureco`, `HYDROTEC`), automatic freight/crane/pallet fee extraction from quote files, Lidl BBS profile checks, and numbered Technical Clarification Questions (`technical_clarification_questions`).
+- **PyPI Trusted Publishing CI Workflow:** Added `.github/workflows/publish-pypi.yml` for automated OIDC publishing to PyPI on GitHub Releases.
+
+---
+
 ## [0.6.0] - 2026-11-17
 
 ### Added
