@@ -77,6 +77,17 @@ flowchart TD
 | 20 | **`calculate_cross_section_and_embankment_qto`** | Road Cross-Sections | Computes road typical cross-section (*mintakeresztszelvény*) quantities along alignments: crushed-stone shoulders ($\text{m}^2$, compacted $\text{m}^3$, order $\text{m}^3$, and tonnes $\text{t}$ including outer batter-slope wedge), inclined embankment/cut slope area ($\text{m}^2$), slope topsoil spreading ($\text{m}^3$), hydroseeding ($\text{m}^2$), and trapezoidal roadside drainage/infiltration ditch excavation ($\text{m}^3$), lining ($\text{m}^2$), washed gravel fill ($\text{m}^3$), and geotextile wrap ($\text{m}^2$). |
 | 21 | **`generate_progress_certificate`** | Progress Billing | Generates official Construction Measurement Sheets (*Felmérési Napló*) and Monthly Progress Payment Certificates (*Teljesítésigazolás* / FIDIC IPC / VOB/B *Abschlagsrechnung*) from contracted BoQ workbooks and/or progress entries; computes previous, current, and cumulative quantities/amounts, flags $>100\%$ quantity overruns (*Pótmunka*), applies advance repayment and retention deductions, and exports a 2-sheet Excel workbook with live formulas and signature blocks. |
 
+### Built-In MCP Resources (5 Reference Standards) & One-Click Prompts (5 Workflows)
+
+- **MCP Resources (readable directly by any MCP client):**
+  - `civil-qto://standards/en1610-trench-widths` – MSZ EN 1610 / DIN 4124 trench widths, pipe OD multipliers, bedding & shoring thresholds
+  - `civil-qto://standards/pavement-densities-and-factors` – EN 13108 / EN 13285 / EN 14227 bulk densities, compaction multipliers, and pallet/truckload logistics norms
+  - `civil-qto://standards/precast-manhole-catalogs` – DIN EN 1917, ASTM C478, and SzeBeton T2 precast manhole & road gully modular heights
+  - `civil-qto://standards/technological-completeness-chains` – 6 technological completeness chains + Lidl BBS specification rules
+  - `civil-qto://workflow/hitl-3-step-protocol` – 3-Step HITL civil engineering QTO & BoQ protocol and 5 mandatory executive summary KPIs
+- **One-Click MCP Prompts (slash workflows in Claude Desktop / Claude Code / Cursor / Antigravity):**
+  - `tender_full_audit` | `roadworks_and_paving_qto` | `utility_network_and_trench_qto` | `supplier_bid_tabulation` | `monthly_progress_billing`
+
 ---
 
 ## Quick Start & Installation

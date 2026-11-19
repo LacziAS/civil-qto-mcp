@@ -117,6 +117,7 @@ from civil_qto_mcp.models.dxf_models import (
     UtilityNetworkReport,
     VisualOverlayReport,
 )
+from civil_qto_mcp.resources_and_prompts import register_resources_and_prompts
 
 # -----------------------------------------------------------------------------
 # STRICT STDIO PROTECTION: Force all logs and Python warnings to sys.stderr
@@ -1549,6 +1550,10 @@ def generate_progress_certificate(
             vat_percent=vat_percent,
             output_xlsx_path=output_xlsx_path,
         )
+
+
+# Register 5 Engineering Reference MCP Resources & 5 One-Click Workflow MCP Prompts
+register_resources_and_prompts(mcp)
 
 
 def main() -> None:

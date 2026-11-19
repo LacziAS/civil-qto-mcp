@@ -477,7 +477,7 @@ def test_manufacturer_synonyms_and_lidl_bbs_profile_audit(tmp_path: Path) -> Non
 
 
 def test_mcp_server_has_all_21_v06_tools() -> None:
-    """Verify all 21 tools (v0.1..v0.6) are registered on the MCPServer instance."""
+    """Verify all 21 tools, 5 engineering resources, and 5 workflow prompts are registered on the MCPServer instance."""
     tool_manager = getattr(mcp, "_tool_manager", None)
     assert tool_manager is not None
     tools_dict = tool_manager._tools
@@ -486,3 +486,23 @@ def test_mcp_server_has_all_21_v06_tools() -> None:
     assert "calculate_cross_section_and_embankment_qto" in tools_dict
     assert "generate_progress_certificate" in tools_dict
     assert len(tools_dict) == 21
+
+    resource_manager = getattr(mcp, "_resource_manager", None)
+    assert resource_manager is not None
+    resources_dict = resource_manager._resources
+    assert "civil-qto://standards/en1610-trench-widths" in resources_dict
+    assert "civil-qto://standards/pavement-densities-and-factors" in resources_dict
+    assert "civil-qto://standards/precast-manhole-catalogs" in resources_dict
+    assert "civil-qto://standards/technological-completeness-chains" in resources_dict
+    assert "civil-qto://workflow/hitl-3-step-protocol" in resources_dict
+    assert len(resources_dict) == 5
+
+    prompt_manager = getattr(mcp, "_prompt_manager", None)
+    assert prompt_manager is not None
+    prompts_dict = prompt_manager._prompts
+    assert "tender_full_audit" in prompts_dict
+    assert "roadworks_and_paving_qto" in prompts_dict
+    assert "utility_network_and_trench_qto" in prompts_dict
+    assert "supplier_bid_tabulation" in prompts_dict
+    assert "monthly_progress_billing" in prompts_dict
+    assert len(prompts_dict) == 5
