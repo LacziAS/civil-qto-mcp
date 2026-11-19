@@ -1,5 +1,7 @@
 # civil-qto-mcp
 
+[![PyPI version](https://img.shields.io/pypi/v/civil-qto-mcp.svg?color=0284c7)](https://pypi.org/project/civil-qto-mcp/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/civil-qto-mcp.svg?color=0ea5e9)](https://pypi.org/project/civil-qto-mcp/)
 [![CI](https://github.com/LacziAS/civil-qto-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LacziAS/civil-qto-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
