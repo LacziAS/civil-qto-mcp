@@ -8,6 +8,8 @@
 [![MCP](https://img.shields.io/badge/MCP-21%20Tools-10b981.svg)](https://modelcontextprotocol.io/)
 [![Tests](https://img.shields.io/badge/pytest-43%20passed-brightgreen.svg)](tests/)
 
+[![LacziAS/civil-qto-mcp MCP server](https://glama.ai/mcp/servers/LacziAS/civil-qto-mcp/badges/score.svg)](https://glama.ai/mcp/servers/LacziAS/civil-qto-mcp)
+
 **Deterministic Model Context Protocol (MCP) Server for Civil Engineering, Roadworks, Paving, Earthworks, Foundations & Utilities Quantity Take-Off (`.dxf` / `.dwg` / `.pdf`) and Bill of Quantities (`.xlsx` / `.xlsm`) Auditing.**
 
 ---
