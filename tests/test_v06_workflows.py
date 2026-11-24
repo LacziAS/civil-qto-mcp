@@ -19,6 +19,7 @@ from civil_qto_mcp.boq.supplier_bid_tabulator import compare_supplier_quotes_and
 from civil_qto_mcp.cad.cross_section_calculator import calculate_cross_section_and_embankment_qto
 from civil_qto_mcp.cad.inspector import inspect_civil_dxf
 from civil_qto_mcp.cad.qto_measurer import measure_linear_and_area_features
+from civil_qto_mcp.cad.tin_earthwork_engine import calculate_tin_earthwork_volumes
 from civil_qto_mcp.cad.trench_earthwork_calculator import calculate_trench_earthwork_and_bedding
 from civil_qto_mcp.cad.utility_extractor import extract_utility_network_and_levels
 from civil_qto_mcp.models.boq_models import (
@@ -474,6 +475,64 @@ def test_manufacturer_synonyms_and_lidl_bbs_profile_audit(tmp_path: Path) -> Non
     assert "LIDL-02-STAINLESS-SEPARATOR" in rule_ids
     assert len(comp_rep.technical_clarification_questions) == len(comp_rep.findings)
     assert any("Lidl BBS" in q for q in comp_rep.technical_clarification_questions)
+
+
+def test_landxml_3d_surface_earthwork_volumes(tmp_path: Path) -> None:
+    """
+    Verify v0.6.2 LandXML 1.2 (.xml) 3D Surface ingestion inside Tool 16 (calculate_tin_earthwork_volumes):
+    - 20m x 10m (200 m2) site with two LandXML surfaces: 'Meglevo_Terep' (Z=105.00m) and 'Tervezett_Burkolat' (Z=105.00m).
+    - Topsoil strip = 0.20m -> 40.0 m3 (stripped ground = 104.80m).
+    - Pavement structure deduction = 0.50m -> subgrade = 104.50m.
+    - Net cut = 200 m2 * (104.80 - 104.50) = 60.0 m3, Fill = 0.0 m3.
+    """
+    landxml_file = tmp_path / "civil3d_surfaces.xml"
+    landxml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Units>
+    <Metric linearUnit="meter" areaUnit="squareMeter" volumeUnit="cubicMeter"/>
+  </Units>
+  <Surfaces>
+    <Surface name="Meglevo_Terep">
+      <Definition surfType="TIN">
+        <Pnts>
+          <P id="1">0.000 0.000 105.000</P>
+          <P id="2">0.000 20.000 105.000</P>
+          <P id="3">10.000 20.000 105.000</P>
+          <P id="4">10.000 0.000 105.000</P>
+          <P id="5">5.000 10.000 105.000</P>
+        </Pnts>
+      </Definition>
+    </Surface>
+    <Surface name="Tervezett_Burkolat">
+      <Definition surfType="TIN">
+        <Pnts>
+          <P id="1">0.000 0.000 105.000</P>
+          <P id="2">0.000 20.000 105.000</P>
+          <P id="3">10.000 20.000 105.000</P>
+          <P id="4">10.000 0.000 105.000</P>
+          <P id="5">5.000 10.000 105.000</P>
+        </Pnts>
+      </Definition>
+    </Surface>
+  </Surfaces>
+</LandXML>
+"""
+    landxml_file.write_text(landxml_content, encoding="utf-8")
+
+    rep = calculate_tin_earthwork_volumes(
+        landxml_existing_path=landxml_file,
+        topsoil_strip_thickness_m=0.20,
+        pavement_structure_thickness_m=0.50,
+    )
+
+    assert rep.existing_points_count == 5
+    assert rep.design_points_count == 5
+    assert rep.footprint_area_m2 == pytest.approx(200.0, abs=0.1)
+    assert rep.topsoil_strip_volume_m3 == pytest.approx(40.0, abs=0.1)
+    assert rep.cut_volume_bank_m3 == pytest.approx(60.0, abs=0.1)
+    assert rep.fill_volume_compacted_m3 == pytest.approx(0.0, abs=0.1)
+    assert any("Meglevo_Terep" in w for w in rep.warnings)
+    assert any("Tervezett_Burkolat" in w for w in rep.warnings)
 
 
 def test_mcp_server_has_all_21_v06_tools() -> None:

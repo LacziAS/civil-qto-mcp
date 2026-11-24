@@ -1126,6 +1126,27 @@ def calculate_tin_earthwork_volumes(
         list[str] | None,
         Field(description="CAD layers defining the earthwork/grading boundary polygon."),
     ] = None,
+    landxml_existing_path: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional path to a LandXML (.xml) file exported from Civil 3D / OpenRoads containing "
+                "the Existing Ground `<Surface>` (or both Existing and Design surfaces)."
+            )
+        ),
+    ] = None,
+    landxml_design_path: Annotated[
+        str | None,
+        Field(description="Optional separate LandXML (.xml) file containing the Designed `<Surface>`."),
+    ] = None,
+    existing_surface_name: Annotated[
+        str | None,
+        Field(description="Optional `<Surface name='...'>` selector inside the LandXML file for Existing Ground."),
+    ] = None,
+    design_surface_name: Annotated[
+        str | None,
+        Field(description="Optional `<Surface name='...'>` selector inside the LandXML file for Designed Surface."),
+    ] = None,
     unit_scale_to_meter: Annotated[
         float,
         Field(description="CAD drawing unit scale to meters (default 1.0).", gt=0.0),
@@ -1150,9 +1171,9 @@ def calculate_tin_earthwork_volumes(
     ] = 1.15,
 ) -> TinEarthworkReport:
     """
-    [v0.5 Tool 16] Compute 3D Delaunay TIN surface earthwork volumes (topsoil stripping, cut, fill,
+    [v0.5/v0.6.2 Tool 16] Compute 3D Delaunay TIN surface earthwork volumes (topsoil stripping, cut, fill,
     and net earth balance) between existing terrain and designed subgrade level directly from
-    CAD spot-elevation layers or 3D point clouds (without Civil 3D).
+    CAD spot-elevation layers, Civil 3D LandXML (`.xml`) 3D surfaces, or 3D point clouds.
     """
     with contextlib.redirect_stdout(sys.stderr):
         return _calculate_tin_earthwork_volumes(
@@ -1163,6 +1184,10 @@ def calculate_tin_earthwork_volumes(
             existing_elevation_layers=existing_elevation_layers,
             design_elevation_layers=design_elevation_layers,
             boundary_layers=boundary_layers,
+            landxml_existing_path=landxml_existing_path,
+            landxml_design_path=landxml_design_path,
+            existing_surface_name=existing_surface_name,
+            design_surface_name=design_surface_name,
             unit_scale_to_meter=unit_scale_to_meter,
             topsoil_strip_thickness_m=topsoil_strip_thickness_m,
             pavement_structure_thickness_m=pavement_structure_thickness_m,

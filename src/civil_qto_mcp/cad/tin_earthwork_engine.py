@@ -15,6 +15,7 @@ TEXT/MTEXT elevation callouts) or explicit 3D point clouds — without requiring
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from shapely.geometry import MultiPoint, MultiPolygon, Point, Polygon
@@ -184,6 +185,99 @@ def _subdivide_triangle_coords(
     ]
 
 
+def _strip_ns(tag: str) -> str:
+    """Strip XML namespace prefix from an ElementTree tag."""
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _parse_landxml_surfaces(landxml_path: str | Path) -> dict[str, list[SpotElevationPoint]]:
+    """
+    Parse all `<Surface>` TIN point clouds from a LandXML 1.0/1.1/1.2 file (`.xml`).
+    Handles both Metric (`meter`/`millimeter`/`centimeter`) and Imperial (`foot`) `<Units>`
+    and LandXML `<P id="...">Northing Easting Elevation</P>` coordinate ordering.
+    """
+    fpath = Path(landxml_path)
+    if not fpath.exists():
+        raise FileNotFoundError(f"LandXML file not found: {fpath}")
+
+    tree = ET.parse(fpath)
+    root = tree.getroot()
+
+    # Determine linear unit scale to meters
+    unit_scale = 1.0
+    for elem in root.iter():
+        tag = _strip_ns(elem.tag)
+        if tag == "Metric":
+            lu = (elem.attrib.get("linearUnit") or "meter").lower()
+            if lu in ("millimeter", "millimetre", "mm"):
+                unit_scale = 0.001
+            elif lu in ("centimeter", "centimetre", "cm"):
+                unit_scale = 0.01
+            else:
+                unit_scale = 1.0
+            break
+        if tag == "Imperial":
+            lu = (elem.attrib.get("linearUnit") or "foot").lower()
+            unit_scale = 0.3048 if "foot" in lu or "feet" in lu else 0.0254
+            break
+
+    surfaces: dict[str, list[SpotElevationPoint]] = {}
+    surf_idx = 0
+    for elem in root.iter():
+        if _strip_ns(elem.tag) != "Surface":
+            continue
+        surf_idx += 1
+        sname = elem.attrib.get("name") or f"Surface_{surf_idx}"
+        pts: list[SpotElevationPoint] = []
+        for sub in elem.iter():
+            if _strip_ns(sub.tag) == "P" and sub.text:
+                parts = sub.text.strip().split()
+                if len(parts) >= 3:
+                    try:
+                        northing = float(parts[0]) * unit_scale
+                        easting = float(parts[1]) * unit_scale
+                        elev = float(parts[2]) * unit_scale
+                    except ValueError:
+                        continue
+                    pts.append(
+                        SpotElevationPoint(
+                            x_m=easting,
+                            y_m=northing,
+                            z_m=elev,
+                            point_id=sub.attrib.get("id"),
+                        )
+                    )
+        if pts:
+            surfaces[sname] = pts
+
+    return surfaces
+
+
+def _select_landxml_surface(
+    surfaces: dict[str, list[SpotElevationPoint]],
+    preferred_name: str | None,
+    keywords: tuple[str, ...],
+    fallback_index: int,
+) -> tuple[str | None, list[SpotElevationPoint]]:
+    """Select a LandXML surface by exact/partial name, keyword match, or positional fallback."""
+    if not surfaces:
+        return None, []
+    names = list(surfaces.keys())
+    if preferred_name:
+        if preferred_name in surfaces:
+            return preferred_name, surfaces[preferred_name]
+        pref_low = preferred_name.lower()
+        for nm in names:
+            if pref_low in nm.lower():
+                return nm, surfaces[nm]
+    for nm in names:
+        nm_low = nm.lower()
+        if any(k in nm_low for k in keywords):
+            return nm, surfaces[nm]
+    idx = min(fallback_index, len(names) - 1)
+    return names[idx], surfaces[names[idx]]
+
+
 def calculate_tin_earthwork_volumes(
     existing_points: list[SpotElevationPoint] | list[dict] | None = None,
     design_points: list[SpotElevationPoint] | list[dict] | None = None,
@@ -192,6 +286,10 @@ def calculate_tin_earthwork_volumes(
     existing_elevation_layers: list[str] | None = None,
     design_elevation_layers: list[str] | None = None,
     boundary_layers: list[str] | None = None,
+    landxml_existing_path: str | Path | None = None,
+    landxml_design_path: str | Path | None = None,
+    existing_surface_name: str | None = None,
+    design_surface_name: str | None = None,
     unit_scale_to_meter: float = 1.0,
     topsoil_strip_thickness_m: float = 0.15,
     pavement_structure_thickness_m: float = 0.0,
@@ -199,7 +297,8 @@ def calculate_tin_earthwork_volumes(
 ) -> TinEarthworkReport:
     """
     Calculate 3D Delaunay TIN earthwork volumes (topsoil stripping, cut, fill, and net balance)
-    between existing terrain and designed subgrade level.
+    between existing terrain and designed subgrade level from CAD layers, LandXML (.xml) surfaces,
+    or explicit 3D spot elevation point clouds.
     """
     warnings_list: list[str] = []
     ex_pts: list[SpotElevationPoint] = []
@@ -211,6 +310,47 @@ def calculate_tin_earthwork_volumes(
     if design_points:
         for p in design_points:
             des_pts.append(p if isinstance(p, SpotElevationPoint) else SpotElevationPoint.model_validate(p))
+
+    # Optional LandXML (.xml) 3D Surface ingestion (Civil 3D / OpenRoads / ArchiCAD)
+    if landxml_existing_path is not None:
+        lx_surfs = _parse_landxml_surfaces(landxml_existing_path)
+        if not ex_pts and lx_surfs:
+            ex_nm, ex_pts = _select_landxml_surface(
+                lx_surfs,
+                existing_surface_name,
+                keywords=("megl", "exist", "eg", "terep", "orig", "ground"),
+                fallback_index=0,
+            )
+            if ex_nm:
+                warnings_list.append(
+                    f"Loaded Existing Ground surface '{ex_nm}' ({len(ex_pts)} points) from LandXML."
+                )
+        # If no separate design LandXML was provided and this LandXML contains >=2 surfaces, extract Design too!
+        if landxml_design_path is None and not des_pts and len(lx_surfs) >= 2:
+            des_nm, des_pts = _select_landxml_surface(
+                lx_surfs,
+                design_surface_name,
+                keywords=("terv", "design", "fg", "subgrade", "tukor", "tükör", "prop", "finish"),
+                fallback_index=1,
+            )
+            if des_nm:
+                warnings_list.append(
+                    f"Loaded Design surface '{des_nm}' ({len(des_pts)} points) from LandXML."
+                )
+
+    if landxml_design_path is not None and not des_pts:
+        lx_des_surfs = _parse_landxml_surfaces(landxml_design_path)
+        if lx_des_surfs:
+            des_nm, des_pts = _select_landxml_surface(
+                lx_des_surfs,
+                design_surface_name,
+                keywords=("terv", "design", "fg", "subgrade", "tukor", "tükör", "prop", "finish"),
+                fallback_index=0,
+            )
+            if des_nm:
+                warnings_list.append(
+                    f"Loaded Design surface '{des_nm}' ({len(des_pts)} points) from LandXML."
+                )
 
     boundary_poly: Polygon | MultiPolygon | None = None
     if file_path_cad is not None:

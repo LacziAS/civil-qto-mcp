@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.6.2] - 2026-11-24
+
+### Added
+- **LandXML 1.0/1.1/1.2 (`.xml`) 3D Surface Support in Tool 16 (`calculate_tin_earthwork_volumes`):** Direct parsing of Civil 3D / OpenRoads / ArchiCAD LandXML `<Surface>` TIN point clouds (`landxml_existing_path`, `landxml_design_path`, `existing_surface_name`, `design_surface_name`) with automatic Metric/Imperial `<Units>` scaling and `Northing Easting Elevation` coordinate handling.
+- Added `test_landxml_3d_surface_earthwork_volumes` (44 total passing tests).
+
+---
+
 ## [0.6.1] - 2026-11-19
 
 ### Added
